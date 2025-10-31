@@ -1,0 +1,158 @@
+[versions]
+
+accompanistPager = "0.33.2-alpha"
+geo = "0.6.0"
+kotlin = "2.2.20"
+compose = "1.8.0-beta01"
+agp = "8.6.1"
+androidx-activityCompose = "1.10.1"
+androidx-core = "1.15.0"
+androidx-uiTest = "1.7.8"
+kermit = "2.0.5"
+kotlinx-coroutines = "1.10.1"
+ktor = "3.1.1"
+androidx-lifecycle = "2.9.0-alpha05"
+androidx-navigation = "2.9.0-alpha15"
+kotlinx-serialization = "1.8.0"
+koin = "4.0.3"
+coil = "3.1.0"
+mapsComposeUtils = "2.11.4"
+multiplatformSettings = "1.3.0"
+kotlinx-datetime = "0.6.2"
+permissions = "0.16.0"
+room = "2.7.0-rc02"
+ksp = "2.2.20-2.0.4"
+googleServices = "4.4.2"
+buildConfig = "5.4.0"
+composeIcons = "1.1.1"
+firebaseCrashlytics = "3.0.2"
+firebaseBom = "33.12.0"
+firebaseKtx = "2.1.0"
+crashkios = "0.8.6"
+analyticsAndroid = "1.21.0"
+kmpnotifier = "1.5.0"
+kottie = "2.0.0"
+kolor = "3.0.0-beta01"
+calfPermissions = "0.7.0"
+camerak = "0.0.11"
+kmpAuth = "2.4.0-alpha01"
+voyager = "1.1.0-beta01"
+mokoMvvmVersion = "0.16.1"
+maps-compose = "4.3.2"
+play-services-maps = "19.2.0"
+zoomable = "2.0.0"
+skie = "0.10.6"
+krop = "0.3.0-alpha01"
+reorderable = "2.4.0"
+compose-dnd = "0.4.0"
+qrose = "1.0.1"
+
+[libraries]
+
+accompanist-pager = { module = "com.google.accompanist:accompanist-pager", version.ref = "accompanistPager" }
+androidx-activityCompose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
+androidx-core = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-uitest-testManifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidx-uiTest" }
+androidx-uitest-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "androidx-uiTest" }
+geo = { module = "dev.icerock.moko:geo", version.ref = "geo" }
+geocompose = { module = "dev.icerock.moko:geo-compose", version.ref = "geo" }
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-client-serialization = { module = "io.ktor:ktor-client-serialization", version.ref = "ktor" }
+ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
+ktor-client-curl = { module = "io.ktor:ktor-client-curl", version.ref = "ktor" }
+ktor-client-winhttp = { module = "io.ktor:ktor-client-winhttp", version.ref = "ktor" }
+androidx-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel", version.ref = "androidx-lifecycle" }
+androidx-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
+androidx-navigation-composee = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "androidx-navigation" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
+coil = { module = "io.coil-kt.coil3:coil-compose-core", version.ref = "coil" }
+coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+maps-compose-utils = { module = "com.google.maps.android:maps-compose-utils", version.ref = "mapsComposeUtils" }
+multiplatformSettings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatformSettings" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+permissions = { module = "dev.icerock.moko:permissions", version.ref = "permissions" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+composeIcons-featherIcons = { module = "br.com.devsrsouza.compose.icons:feather", version.ref = "composeIcons" }
+mokoMvvmDatabinding = { module = "dev.icerock.moko:mvvm-databinding", version.ref = "mokoMvvmVersion" }
+
+calf-permissions = { module = "com.mohamedrejeb.calf:calf-permissions", version.ref = "calfPermissions" }
+calf-file-picker = { module = "com.mohamedrejeb.calf:calf-file-picker", version.ref = "calfPermissions" }
+camerak = { module = "io.github.kashif-mehmood-km:camerak", version.ref = "camerak" }
+
+#Firebase
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics-ktx" }
+firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics-ktx" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx" }
+
+firebase-auth-kt = { group = "dev.gitlive", name = "firebase-auth", version.ref = "firebaseKtx" }
+firebase-firestore-kt = { group = "dev.gitlive", name = "firebase-firestore", version.ref = "firebaseKtx" }
+firebase-storage-kt = { group = "dev.gitlive", name = "firebase-storage", version.ref = "firebaseKtx" }
+firebase-functions-kt = { group = "dev.gitlive", name = "firebase-functions", version.ref = "firebaseKtx" }
+firebase-common-kt = { group = "dev.gitlive", name = "firebase-common", version.ref = "firebaseKtx" }
+firebase-crashlytics-kt = { group = "dev.gitlive", name = "firebase-crashlytics", version.ref = "firebaseKtx" }
+firebase-config-kt = { group = "dev.gitlive", name = "firebase-config", version.ref = "firebaseKtx" }
+crashkios = { module = "co.touchlab.crashkios:crashlytics", version.ref = "crashkios" }
+analytics-android = { module = "com.amplitude:analytics-android", version.ref = "analyticsAndroid" }
+
+material-kolor = { group = "com.materialkolor", name = "material-kolor", version.ref = "kolor" }
+kottie = { group = "io.github.ismai117", name = "kottie", version.ref = "kottie" }
+
+#Push Notifications
+kmpnotifier = { group = "io.github.mirzemehdi", name = "kmpnotifier", version.ref = "kmpnotifier" }
+
+#Authentication Library
+kmpAuth-firebase = { group = "io.github.mirzemehdi", name = "kmpauth-firebase", version.ref = "kmpAuth" }
+kmpAuth-google = { group = "io.github.mirzemehdi", name = "kmpauth-google", version.ref = "kmpAuth" }
+kmpAuth-uihelper = { group = "io.github.mirzemehdi", name = "kmpauth-uihelper", version.ref = "kmpAuth" }
+
+voyager-navigator = { group = "cafe.adriel.voyager", name = "voyager-navigator", version.ref = "voyager" }
+voyager-tabNavigator = { group = "cafe.adriel.voyager", name = "voyager-tab-navigator", version.ref = "voyager" }
+voyager-transitions = { group = "cafe.adriel.voyager", name = "voyager-screenmodel", version.ref = "voyager" }
+voyager-screenmodel = { group = "cafe.adriel.voyager", name = "voyager-transitions", version.ref = "voyager" }
+voyager-bottomsheet = { group = "cafe.adriel.voyager", name = "voyager-bottom-sheet-navigator", version.ref = "voyager" }
+voyager-koin = { module = "cafe.adriel.voyager:voyager-koin", version.ref = "voyager" }
+
+maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "maps-compose" }
+play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "play-services-maps" }
+zoomable = { module = "net.engawapg.lib:zoomable", version.ref = "zoomable" }
+krop = { module = "com.attafitamim.krop:ui", version.ref = "krop" }
+krop-util = { module = "com.attafitamim.krop:extensions-filekit", version.ref = "krop" }
+krop-core = { module = "com.attafitamim.krop:core", version.ref = "krop" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
+compose-dnd = { module = "com.mohamedrejeb.dnd:compose-dnd", version.ref = "compose-dnd" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
+
+[bundles]
+
+ui = ["material-kolor", "kottie"]
+front-end = ["voyager-bottomsheet", "voyager-navigator", "voyager-tabNavigator", "voyager-koin", "voyager-screenmodel", "voyager-transitions", "calf-permissions", "calf-file-picker", "camerak"]
+firebase-kt = ["firebase-auth-kt", "firebase-firestore-kt", "firebase-storage-kt", "firebase-functions-kt", "firebase-common-kt", "firebase-crashlytics-kt", "firebase-config-kt"]
+
+[plugins]
+
+multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose = { id = "org.jetbrains.compose", version.ref = "compose" }
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlinx-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+room = { id = "androidx.room", version.ref = "room" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+buildConfig = { id = "com.github.gmazzo.buildconfig", version.ref = "buildConfig" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlytics" }
+skie = { id = "co.touchlab.skie", version.ref = "skie" }
