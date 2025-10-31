@@ -1,26 +1,24 @@
 # KmPDF - Kotlin Multiplatform PDF Generator
 
-A lightweight, open-source Kotlin Multiplatform library for generating PDF documents with QR codes from Compose UI. Built for mobile (Android & iOS), desktop (JVM), and web (WASM) with seamless platform-specific implementations.
+A lightweight, open-source Kotlin Multiplatform library for generating PDF documents from Compose UI. Built for mobile (Android & iOS), desktop (JVM), and web (WASM) with platform-specific implementations.
 
 ## Features
 
 - ✅ **Kotlin Multiplatform** - Share code across Android, iOS, Desktop (JVM), and WASM
-- ✅ **Compose Multiplatform** - Integrates seamlessly with Compose UI
-- ✅ **QR Code Generation** - Built-in QR code support using [qrose](https://github.com/alexzhirkevich/qrose)
+- ✅ **Compose Multiplatform** - Render any `@Composable` to PDF
 - ✅ **Platform Native** - Uses platform-specific PDF APIs for optimal performance
 - ✅ **Simple API** - Clean, intuitive interface
-- ✅ **Customizable** - Configure title, subtitle, additional info, and footer
-- ✅ **Future: Composable Rendering** - Designed for future support of rendering any Composable to PDF
+- ✅ **Flexible** - Works with any composable content
 - ✅ **MIT Licensed** - Free for commercial and personal use
 
 ## Supported Platforms
 
 | Platform | Status | Implementation |
 |----------|--------|----------------|
-| Android | ✅ Full Support | `android.graphics.pdf.PdfDocument` |
-| iOS | ✅ Full Support | `UIGraphics` PDF context |
-| Desktop (JVM) | 🚧 Planned | Coming soon |
-| WASM | 🚧 Planned | Coming soon |
+| Android | 🚧 In Progress | `android.graphics.pdf.PdfDocument` |
+| iOS | 🚧 In Progress | `UIGraphics` PDF context |
+| Desktop (JVM) | 🚧 Planned | Apache PDFBox or similar |
+| WASM | 🚧 Planned | Browser PDF APIs |
 
 ## Installation
 
@@ -31,7 +29,7 @@ Add the library to your `commonMain` dependencies:
 ```kotlin
 sourceSets {
     commonMain.dependencies {
-        implementation("io.github.bigboiapps:kmpdf:1.0.0")
+        implementation("io.github.bigboyapps:kmpdf:1.0.0")
     }
 }
 ```
@@ -57,7 +55,7 @@ sourceSets {
 For Android, initialize the library in your `Application` class or `MainActivity`:
 
 ```kotlin
-import io.github.bigboiapps.kmpdf.initKmPdfGenerator
+import io.github.bigboyapps.kmpdf.initKmPdfGenerator
 
 class MyApplication : Application() {
     override fun onCreate() {
@@ -69,27 +67,44 @@ class MyApplication : Application() {
 
 iOS, Desktop, and WASM require no initialization.
 
-### 2. Generate a PDF
+### 2. Generate a PDF from a Composable
 
 ```kotlin
-import io.github.bigboiapps.kmpdf.*
+import io.github.bigboyapps.kmpdf.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
-suspend fun generateGameQrPdf() {
+suspend fun generatePdf() {
     val generator = createKmPdfGenerator()
 
-    val content = PdfContent(
-        title = "Basketball Game",
-        subtitle = "March 15, 2024 at 6:00 PM",
-        qrCodeData = "https://joinpickup.app/game/abc123",
-        additionalInfo = listOf(
-            "Location: Central Park",
-            "Players: 8/10",
-            "Skill Level: Intermediate"
-        ),
-        footer = "Scan the QR code to join"
-    )
+    when (val result = generator.generatePdf(
+        width = 595.dp,  // A4 width in points
+        height = 842.dp, // A4 height in points
+        fileName = "my_document.pdf"
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+        ) {
+            Text(
+                text = "Basketball Game",
+                style = MaterialTheme.typography.headlineLarge
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "March 15, 2024 at 6:00 PM",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(32.dp))
 
-    when (val result = generator.generatePdf(content, "game_invite.pdf")) {
+            // Add any composable content
+            GameDetails(game)
+            QrCodeImage(gameUrl)
+        }
+    }) {
         is PdfResult.Success -> {
             println("PDF saved at: ${result.uri}")
         }
@@ -124,29 +139,17 @@ present(activityVC, animated: true)
 
 ### `KmPdfGenerator`
 
-Main interface for generating PDFs.
+Main interface for generating PDFs from composables.
 
 ```kotlin
 interface KmPdfGenerator {
     suspend fun generatePdf(
-        content: PdfContent,
-        fileName: String = "document.pdf"
+        width: Dp = 595.dp,
+        height: Dp = 842.dp,
+        fileName: String = "document.pdf",
+        content: @Composable () -> Unit
     ): PdfResult
 }
-```
-
-### `PdfContent`
-
-Data class containing the content for the PDF.
-
-```kotlin
-data class PdfContent(
-    val title: String,                      // Main title (bold, 24pt)
-    val subtitle: String? = null,           // Optional subtitle (16pt)
-    val qrCodeData: String,                 // Data to encode in QR code
-    val additionalInfo: List<String> = emptyList(),  // Additional text lines
-    val footer: String? = null              // Optional footer text
-)
 ```
 
 ### `PdfResult`
@@ -168,65 +171,68 @@ expect fun createKmPdfGenerator(): KmPdfGenerator
 
 Creates a platform-specific instance of `KmPdfGenerator`.
 
-## Example: Complete Integration
+## Example: Game Invitation PDF
 
-Here's a complete example integrating with a Compose UI:
+Here's a complete example creating a game invitation PDF:
 
 ```kotlin
 @Composable
-fun ShareGameScreen(game: Game) {
-    val scope = rememberCoroutineScope()
-    val generator = remember { createKmPdfGenerator() }
-    var pdfUri by remember { mutableStateOf<String?>(null) }
-    var isGenerating by remember { mutableStateOf(false) }
-
+fun GameInvitationPdf(game: Game) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = game.title,
-            style = MaterialTheme.typography.headlineMedium
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
         )
 
-        PrimaryButton(
-            text = if (isGenerating) "Generating PDF..." else "Print to PDF",
-            enabled = !isGenerating,
-            onClick = {
-                scope.launch {
-                    isGenerating = true
-                    val content = PdfContent(
-                        title = game.title,
-                        subtitle = "${game.date} at ${game.time}",
-                        qrCodeData = "https://joinpickup.app/game/${game.id}",
-                        additionalInfo = listOf(
-                            "Location: ${game.parkName}",
-                            "Players: ${game.currentPlayers}/${game.maxPlayers}"
-                        ),
-                        footer = "Scan to join the game"
-                    )
+        Spacer(modifier = Modifier.height(8.dp))
 
-                    when (val result = generator.generatePdf(content)) {
-                        is PdfResult.Success -> {
-                            pdfUri = result.uri
-                        }
-                        is PdfResult.Error -> {
-                            println("Error: ${result.message}")
-                        }
-                    }
-                    isGenerating = false
-                }
-            }
+        Text(
+            text = "${game.date} at ${game.time}",
+            style = MaterialTheme.typography.titleMedium
         )
 
-        pdfUri?.let { uri ->
-            Text("PDF generated successfully!")
-            PrimaryButton(
-                text = "Share PDF",
-                onClick = { sharePdf(uri) }
-            )
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // QR Code (using qrose library separately)
+        QrCodeImage(
+            data = "https://joinpickup.app/game/${game.id}",
+            size = 200.dp
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            InfoRow("Location", game.parkName)
+            InfoRow("Players", "${game.currentPlayers}/${game.maxPlayers}")
+            InfoRow("Skill Level", game.skillLevel)
         }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "Scan the QR code to join the game",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray
+        )
+    }
+}
+
+suspend fun shareGamePdf(game: Game) {
+    val generator = createKmPdfGenerator()
+    when (val result = generator.generatePdf(fileName = "game_${game.id}.pdf") {
+        GameInvitationPdf(game)
+    }) {
+        is PdfResult.Success -> sharePdf(result.uri)
+        is PdfResult.Error -> showError(result.message)
     }
 }
 ```
@@ -235,34 +241,23 @@ fun ShareGameScreen(game: Game) {
 
 ### Android
 - Uses `android.graphics.pdf.PdfDocument` for PDF generation
-- Uses native Android graphics APIs for QR code rendering
+- 🚧 Composable rendering coming soon
 - PDFs are saved to the app's cache directory
 - Minimum SDK: 26 (Android 8.0)
 
 ### iOS
 - Uses `UIGraphics` PDF context for PDF generation
-- Simple QR code rendering for iOS compatibility
+- 🚧 Composable rendering coming soon
 - PDFs are saved to the documents directory
 - Minimum iOS: 13.0
 
 ### Desktop (JVM)
 - 🚧 Coming soon
-- Will use Java PDF libraries (e.g., Apache PDFBox or similar)
+- Will use Apache PDFBox or similar library
 
 ### WASM
 - 🚧 Coming soon
 - Will use browser APIs for PDF generation
-
-## Future Enhancements
-
-This library is designed with extensibility in mind. Future versions will support:
-
-- **Composable-to-PDF**: Render any `@Composable` function directly to PDF
-- **Custom Styling**: More granular control over fonts, colors, and layout
-- **Multi-page PDFs**: Support for documents with multiple pages
-- **Templates**: Pre-built templates for common use cases
-- **Advanced QR Codes**: Enhanced QR code generation with logos and custom styling
-- **Desktop & WASM Support**: Full implementation for all platforms
 
 ## Contributing
 
@@ -302,7 +297,7 @@ To publish the library locally:
 ```
 MIT License
 
-Copyright (c) 2025 BigBoi Apps
+Copyright (c) 2025 BigBoy Apps
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -328,7 +323,6 @@ SOFTWARE.
 Built with:
 - [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html)
 - [Compose Multiplatform](https://www.jetbrains.com/lp/compose-multiplatform/)
-- [qrose](https://github.com/alexzhirkevich/qrose) - QR code generation library
 
 ## Support
 

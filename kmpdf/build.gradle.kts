@@ -6,7 +6,7 @@ plugins {
     `maven-publish`
 }
 
-group = "io.github.bigboiapps"
+group = "io.github.bigboyapps"
 version = "1.0.0"
 
 kotlin {
@@ -39,7 +39,6 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)
-            implementation(libs.qrose)
             implementation(libs.kotlinx.coroutines.core)
         }
 
@@ -60,7 +59,7 @@ kotlin {
 }
 
 android {
-    namespace = "io.github.bigboiapps.kmpdf"
+    namespace = "io.github.bigboyapps.kmpdf"
     compileSdk = 35
 
     defaultConfig {
@@ -76,7 +75,7 @@ android {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "io.github.bigboiapps"
+            groupId = "io.github.bigboyapps"
             artifactId = "kmpdf"
             version = "1.0.0"
 
@@ -94,8 +93,8 @@ publishing {
 
                 developers {
                     developer {
-                        id.set("bigboiapps")
-                        name.set("BigBoi Apps")
+                        id.set("bigboyapps")
+                        name.set("BigBoy Apps")
                     }
                 }
 
