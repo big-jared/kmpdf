@@ -4,16 +4,16 @@ import androidx.compose.runtime.Composable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-actual fun createKmPdfGenerator(): KmPdfGenerator = WasmKmPdfGenerator()
+actual fun createKmPdfGenerator(): KmPdfGenerator = DesktopKmPdfGenerator()
 
-class WasmKmPdfGenerator : KmPdfGenerator {
+class DesktopKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,
         content: @Composable () -> Unit
     ): PdfResult {
-        return withContext(Dispatchers.Default) {
+        return withContext(Dispatchers.IO) {
             try {
-                PdfResult.Error("Composable-to-PDF rendering not yet implemented for WASM. Coming soon!")
+                PdfResult.Error("Composable-to-PDF rendering not yet implemented for Desktop. Coming soon!")
             } catch (e: Exception) {
                 PdfResult.Error("Failed to generate PDF", e)
             }

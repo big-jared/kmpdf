@@ -37,10 +37,11 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.ui)
             implementation(compose.components.resources)
+            implementation(libs.kotlinx.datetime)
         }
 
         androidMain.dependencies {
-            implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.activityCompose)
         }
 
         val desktopMain by getting {

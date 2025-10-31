@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.compose)
     alias(libs.plugins.android.library)
     `maven-publish`
+    signing
 }
 
 group = "io.github.bigboyapps"
@@ -73,37 +74,57 @@ android {
 }
 
 publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            groupId = "io.github.bigboyapps"
-            artifactId = "kmpdf"
-            version = "1.0.0"
+    publications.withType<MavenPublication> {
+        pom {
+            name.set("KmPDF")
+            description.set("Kotlin Multiplatform library for generating PDFs from Compose UI with QR code support")
+            url.set("https://github.com/big-jared/kmpdf")
 
-            pom {
-                name.set("KmPDF")
-                description.set("Kotlin Multiplatform library for generating PDFs from Compose UI with QR code support")
-                url.set("https://github.com/big-jared/kmpdf")
-
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://opensource.org/licenses/MIT")
-                    }
-                }
-
-                developers {
-                    developer {
-                        id.set("bigboyapps")
-                        name.set("BigBoy Apps")
-                    }
-                }
-
-                scm {
-                    connection.set("scm:git:git://github.com/big-jared/kmpdf.git")
-                    developerConnection.set("scm:git:ssh://github.com/big-jared/kmpdf.git")
-                    url.set("https://github.com/big-jared/kmpdf")
+            licenses {
+                license {
+                    name.set("MIT License")
+                    url.set("https://opensource.org/licenses/MIT")
                 }
             }
+
+            developers {
+                developer {
+                    id.set("bigboyapps")
+                    name.set("BigBoy Apps")
+                }
+            }
+
+            scm {
+                connection.set("scm:git:git://github.com/big-jared/kmpdf.git")
+                developerConnection.set("scm:git:ssh://github.com/big-jared/kmpdf.git")
+                url.set("https://github.com/big-jared/kmpdf")
+            }
         }
+    }
+
+    repositories {
+        maven {
+            name = "OSSRH"
+            url = uri(
+                if (version.toString().endsWith("SNAPSHOT")) {
+                    "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+                } else {
+                    "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+                }
+            )
+            credentials {
+                username = System.getenv("OSSRH_USERNAME") ?: ""
+                password = System.getenv("OSSRH_PASSWORD") ?: ""
+            }
+        }
+    }
+}
+
+signing {
+    val signingKey = System.getenv("SIGNING_KEY")
+    val signingPassword = System.getenv("SIGNING_PASSWORD")
+    if (signingKey != null && signingPassword != null) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+        sign(publishing.publications)
     }
 }

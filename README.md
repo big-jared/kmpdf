@@ -15,8 +15,8 @@ A lightweight, open-source Kotlin Multiplatform library for generating PDF docum
 
 | Platform | Status | Implementation |
 |----------|--------|----------------|
-| Android | 🚧 In Progress | `android.graphics.pdf.PdfDocument` |
-| iOS | 🚧 In Progress | `UIGraphics` PDF context |
+| Android | ✅ Working | `android.graphics.pdf.PdfDocument` |
+| iOS | 🚧 Planned | `UIGraphics` PDF context |
 | Desktop (JVM) | 🚧 Planned | Apache PDFBox or similar |
 | WASM | 🚧 Planned | Browser PDF APIs |
 

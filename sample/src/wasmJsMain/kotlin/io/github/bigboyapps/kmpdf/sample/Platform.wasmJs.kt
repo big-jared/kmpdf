@@ -1,8 +1,7 @@
 package io.github.bigboyapps.kmpdf.sample
 
-import kotlin.js.Date
+import kotlinx.datetime.Clock
 
 actual fun getCurrentTimestamp(): String {
-    val date = Date()
-    return date.toLocaleString()
+    return Clock.System.now().toString()
 }

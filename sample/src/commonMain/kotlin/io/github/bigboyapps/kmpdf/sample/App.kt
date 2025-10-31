@@ -120,7 +120,7 @@ fun SampleScreen() {
                         config = PdfConfig(
                             pageSize = selectedPageSize,
                             margins = selectedMargins,
-                            fileName = "sample_${System.currentTimeMillis()}.pdf"
+                            fileName = "sample_${getCurrentTimestamp()}.pdf"
                         )
                     ) {
                         SamplePdfContent()
