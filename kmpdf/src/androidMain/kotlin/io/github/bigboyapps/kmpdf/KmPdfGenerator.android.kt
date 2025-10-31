@@ -22,9 +22,7 @@ fun initKmPdfGenerator(context: Context) {
 
 class AndroidKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
-        width: Dp,
-        height: Dp,
-        fileName: String,
+        config: PdfConfig,
         content: @Composable () -> Unit
     ): PdfResult {
         return withContext(Dispatchers.IO) {
@@ -32,8 +30,8 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 val context = applicationContext
                     ?: return@withContext PdfResult.Error("KmPdfGenerator not initialized. Call initKmPdfGenerator(context) first.")
 
-                val widthPx = (width.value * context.resources.displayMetrics.density).toInt()
-                val heightPx = (height.value * context.resources.displayMetrics.density).toInt()
+                val widthPx = (config.pageSize.width.value * context.resources.displayMetrics.density).toInt()
+                val heightPx = (config.pageSize.height.value * context.resources.displayMetrics.density).toInt()
 
                 PdfResult.Error("Composable-to-PDF rendering not yet implemented for Android. Coming soon!")
             } catch (e: Exception) {

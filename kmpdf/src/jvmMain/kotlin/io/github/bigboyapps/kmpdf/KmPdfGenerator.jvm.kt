@@ -9,9 +9,7 @@ actual fun createKmPdfGenerator(): KmPdfGenerator = JvmKmPdfGenerator()
 
 class JvmKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
-        width: Dp,
-        height: Dp,
-        fileName: String,
+        config: PdfConfig,
         content: @Composable () -> Unit
     ): PdfResult {
         return withContext(Dispatchers.IO) {

@@ -15,9 +15,7 @@ actual fun createKmPdfGenerator(): KmPdfGenerator = IosKmPdfGenerator()
 @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 class IosKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
-        width: Dp,
-        height: Dp,
-        fileName: String,
+        config: PdfConfig,
         content: @Composable () -> Unit
     ): PdfResult {
         return withContext(Dispatchers.IO) {

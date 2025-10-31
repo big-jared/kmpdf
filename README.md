@@ -80,9 +80,11 @@ suspend fun generatePdf() {
     val generator = createKmPdfGenerator()
 
     when (val result = generator.generatePdf(
-        width = 595.dp,  // A4 width in points
-        height = 842.dp, // A4 height in points
-        fileName = "my_document.pdf"
+        config = PdfConfig(
+            pageSize = PageSize.A4,
+            margins = PageMargins.Normal,
+            fileName = "my_document.pdf"
+        )
     ) {
         Column(
             modifier = Modifier
@@ -111,6 +113,15 @@ suspend fun generatePdf() {
         is PdfResult.Error -> {
             println("Error: ${result.message}")
         }
+    }
+}
+
+// Or use defaults (A4 with normal margins)
+suspend fun generateSimplePdf() {
+    val generator = createKmPdfGenerator()
+
+    generator.generatePdf {
+        Text("Hello PDF!")
     }
 }
 ```
@@ -144,11 +155,58 @@ Main interface for generating PDFs from composables.
 ```kotlin
 interface KmPdfGenerator {
     suspend fun generatePdf(
-        width: Dp = 595.dp,
-        height: Dp = 842.dp,
-        fileName: String = "document.pdf",
+        config: PdfConfig = PdfConfig(),
         content: @Composable () -> Unit
     ): PdfResult
+}
+```
+
+### `PdfConfig`
+
+Configuration for PDF generation.
+
+```kotlin
+data class PdfConfig(
+    val pageSize: PageSize = PageSize.A4,
+    val margins: PageMargins = PageMargins.Normal,
+    val fileName: String = "document.pdf"
+)
+```
+
+### `PageSize`
+
+Predefined page sizes in points (1 point = 1/72 inch).
+
+```kotlin
+data class PageSize(val width: Dp, val height: Dp) {
+    companion object {
+        val A4 = PageSize(595.dp, 842.dp)        // 8.27 × 11.69 inches
+        val Letter = PageSize(612.dp, 792.dp)    // 8.5 × 11 inches
+        val Legal = PageSize(612.dp, 1008.dp)    // 8.5 × 14 inches
+        val A3 = PageSize(842.dp, 1191.dp)       // 11.69 × 16.54 inches
+        val A5 = PageSize(420.dp, 595.dp)        // 5.83 × 8.27 inches
+        val Tabloid = PageSize(792.dp, 1224.dp)  // 11 × 17 inches
+    }
+}
+```
+
+### `PageMargins`
+
+Margins in points.
+
+```kotlin
+data class PageMargins(
+    val top: Dp = 72.dp,
+    val bottom: Dp = 72.dp,
+    val left: Dp = 72.dp,
+    val right: Dp = 72.dp
+) {
+    companion object {
+        val None = PageMargins(0.dp, 0.dp, 0.dp, 0.dp)
+        val Normal = PageMargins(72.dp, 72.dp, 72.dp, 72.dp)     // 1 inch
+        val Narrow = PageMargins(36.dp, 36.dp, 36.dp, 36.dp)     // 0.5 inches
+        val Wide = PageMargins(108.dp, 108.dp, 108.dp, 108.dp)   // 1.5 inches
+    }
 }
 ```
 
@@ -228,7 +286,14 @@ fun GameInvitationPdf(game: Game) {
 
 suspend fun shareGamePdf(game: Game) {
     val generator = createKmPdfGenerator()
-    when (val result = generator.generatePdf(fileName = "game_${game.id}.pdf") {
+
+    when (val result = generator.generatePdf(
+        config = PdfConfig(
+            pageSize = PageSize.Letter,
+            margins = PageMargins.Normal,
+            fileName = "game_${game.id}.pdf"
+        )
+    ) {
         GameInvitationPdf(game)
     }) {
         is PdfResult.Success -> sharePdf(result.uri)

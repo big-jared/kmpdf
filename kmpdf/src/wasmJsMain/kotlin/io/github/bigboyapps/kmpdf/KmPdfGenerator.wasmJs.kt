@@ -9,9 +9,7 @@ actual fun createKmPdfGenerator(): KmPdfGenerator = WasmKmPdfGenerator()
 
 class WasmKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
-        width: Dp,
-        height: Dp,
-        fileName: String,
+        config: PdfConfig,
         content: @Composable () -> Unit
     ): PdfResult {
         return withContext(Dispatchers.Default) {
