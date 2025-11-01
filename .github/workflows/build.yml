@@ -1,17 +1,14 @@
-name: Build and Test
+name: Build Library
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v4
@@ -23,22 +20,18 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Setup Android SDK (Ubuntu only)
-      if: matrix.os == 'ubuntu-latest'
-      uses: android-actions/setup-android@v3
-
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Validate Gradle wrapper
+      uses: gradle/wrapper-validation-action@v2
+
     - name: Build library
       run: ./gradlew :kmpdf:build --no-configuration-cache
-
-    - name: Run tests
-      run: ./gradlew :kmpdf:test --no-configuration-cache
 
     - name: Upload build reports
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: build-reports-${{ matrix.os }}
+        name: build-reports
         path: kmpdf/build/reports/

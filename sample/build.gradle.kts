@@ -10,7 +10,7 @@ kotlin {
 
     androidTarget()
 
-    jvm("desktop")
+    jvm()
 
     listOf(
         iosX64(),
@@ -44,22 +44,36 @@ kotlin {
             implementation(libs.androidx.activityCompose)
         }
 
-        val desktopMain by getting {
-            dependencies {
-                implementation(compose.desktop.currentOs)
-            }
+        jvmMain.dependencies {
+            implementation(compose.desktop.currentOs)
+        }
+    }
+}
+
+compose.desktop {
+    application {
+        mainClass = "io.github.bigboyapps.kmpdf.sample.MainKt"
+
+        nativeDistributions {
+            targetFormats(
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb
+            )
+            packageName = "KmPDF Sample"
+            packageVersion = "1.0.0"
         }
     }
 }
 
 android {
     namespace = "io.github.bigboyapps.kmpdf.sample"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.bigboyapps.kmpdf.sample"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }

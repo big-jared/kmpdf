@@ -1,14 +1,52 @@
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     alias(libs.plugins.multiplatform)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose)
     alias(libs.plugins.android.library)
-    `maven-publish`
-    signing
+    alias(libs.plugins.dokka)
+    id("com.vanniktech.maven.publish") version "0.28.0"
 }
 
-group = "io.github.bigboyapps"
-version = "1.0.0"
+val libraryVersion = "1.0.0"
+
+mavenPublishing {
+    coordinates(
+        groupId = "io.github.big-jared",
+        artifactId = "kmpdf",
+        version = libraryVersion
+    )
+
+    pom {
+        name.set("KmPDF")
+        description.set("Kotlin Multiplatform library for generating PDFs from Compose UI")
+        inceptionYear.set("2025")
+        url.set("https://github.com/big-jared/kmpdf")
+
+        licenses {
+            license {
+                name.set("MIT")
+                url.set("https://opensource.org/licenses/MIT")
+            }
+        }
+
+        developers {
+            developer {
+                id.set("big-jared")
+                name.set("Jared Guttromson")
+                email.set("jaredguttromson@gmail.com")
+            }
+        }
+
+        scm {
+            url.set("https://github.com/big-jared/kmpdf")
+        }
+    }
+
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    signAllPublications()
+}
 
 kotlin {
     jvmToolchain(17)
@@ -17,7 +55,7 @@ kotlin {
         publishLibraryVariants("release")
     }
 
-    jvm("desktop")
+    jvm()
 
     listOf(
         iosX64(),
@@ -41,6 +79,7 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.ui)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kermit)
         }
 
         commonTest.dependencies {
@@ -51,17 +90,17 @@ kotlin {
             implementation(libs.androidx.core)
         }
 
-        val desktopMain by getting {
-            dependencies {
-                implementation(compose.desktop.common)
-            }
+        jvmMain.dependencies {
+            implementation(compose.desktop.common)
+            implementation(libs.pdfbox)
+            implementation(libs.kotlinx.coroutines.swing)
         }
     }
 }
 
 android {
     namespace = "io.github.bigboyapps.kmpdf"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
@@ -70,61 +109,5 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-
-publishing {
-    publications.withType<MavenPublication> {
-        pom {
-            name.set("KmPDF")
-            description.set("Kotlin Multiplatform library for generating PDFs from Compose UI with QR code support")
-            url.set("https://github.com/big-jared/kmpdf")
-
-            licenses {
-                license {
-                    name.set("MIT License")
-                    url.set("https://opensource.org/licenses/MIT")
-                }
-            }
-
-            developers {
-                developer {
-                    id.set("bigboyapps")
-                    name.set("BigBoy Apps")
-                }
-            }
-
-            scm {
-                connection.set("scm:git:git://github.com/big-jared/kmpdf.git")
-                developerConnection.set("scm:git:ssh://github.com/big-jared/kmpdf.git")
-                url.set("https://github.com/big-jared/kmpdf")
-            }
-        }
-    }
-
-    repositories {
-        maven {
-            name = "OSSRH"
-            url = uri(
-                if (version.toString().endsWith("SNAPSHOT")) {
-                    "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-                } else {
-                    "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
-                }
-            )
-            credentials {
-                username = System.getenv("OSSRH_USERNAME") ?: ""
-                password = System.getenv("OSSRH_PASSWORD") ?: ""
-            }
-        }
-    }
-}
-
-signing {
-    val signingKey = System.getenv("SIGNING_KEY")
-    val signingPassword = System.getenv("SIGNING_PASSWORD")
-    if (signingKey != null && signingPassword != null) {
-        useInMemoryPgpKeys(signingKey, signingPassword)
-        sign(publishing.publications)
     }
 }

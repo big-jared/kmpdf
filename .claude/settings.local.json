@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :kmpdf:compileKotlinDesktop:*)",
+      "Bash(./gradlew:*)",
+      "Bash(./gradlew :kmpdf:compileKotlinAndroidDebug:*)",
+      "Bash(chmod:*)",
+      "Bash(./gradlew :kmpdf:compileDebugKotlinAndroid:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,394 +1,172 @@
-# KmPDF - Kotlin Multiplatform PDF Generator
+# KmPDF
 
-A lightweight, open-source Kotlin Multiplatform library for generating PDF documents from Compose UI. Built for mobile (Android & iOS), desktop (JVM), and web (WASM) with platform-specific implementations.
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.big-jared/kmpdf.svg)](https://central.sonatype.com/artifact/io.github.big-jared/kmpdf)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.21-blue.svg?logo=kotlin)](http://kotlinlang.org)
 
-## Features
-
-- ✅ **Kotlin Multiplatform** - Share code across Android, iOS, Desktop (JVM), and WASM
-- ✅ **Compose Multiplatform** - Render any `@Composable` to PDF
-- ✅ **Platform Native** - Uses platform-specific PDF APIs for optimal performance
-- ✅ **Simple API** - Clean, intuitive interface
-- ✅ **Flexible** - Works with any composable content
-- ✅ **MIT Licensed** - Free for commercial and personal use
-
-## Supported Platforms
-
-| Platform | Status | Implementation |
-|----------|--------|----------------|
-| Android | ✅ Working | `android.graphics.pdf.PdfDocument` |
-| iOS | 🚧 Planned | `UIGraphics` PDF context |
-| Desktop (JVM) | 🚧 Planned | Apache PDFBox or similar |
-| WASM | 🚧 Planned | Browser PDF APIs |
+Generate PDF documents from Compose UI on Android, iOS, and Desktop.
 
 ## Installation
 
-### Gradle (Kotlin DSL)
-
-Add the library to your `commonMain` dependencies:
-
 ```kotlin
-sourceSets {
-    commonMain.dependencies {
-        implementation("io.github.bigboyapps:kmpdf:1.0.0")
-    }
-}
-```
-
-Or add it as a local module:
-
-```kotlin
-// settings.gradle.kts
-include(":kmpdf")
-
-// build.gradle.kts
-sourceSets {
-    commonMain.dependencies {
-        implementation(project(":kmpdf"))
+commonMain {
+    dependencies {
+        implementation("io.github.big-jared:kmpdf:1.0.0")
     }
 }
 ```
 
 ## Quick Start
 
-### 1. Initialize (Android Only)
+```kotlin
+val generator = createKmPdfGenerator()
 
-For Android, initialize the library in your `Application` class or `MainActivity`:
+val result = generator.generatePdf(
+    config = PdfConfig(
+        pageSize = PageSize.Letter,
+        fileName = "my-document.pdf"
+    )
+) {
+    page {
+        Text("Hello, PDF!")
+    }
+    page {
+        Text("Page 2 content")
+    }
+}
+
+when (result) {
+    is PdfResult.Success -> sharePdf(result.uri)
+    is PdfResult.Error -> println(result.message)
+}
+```
+
+## Usage
+
+### Single Page
 
 ```kotlin
-import io.github.bigboyapps.kmpdf.initKmPdfGenerator
+generator.generatePdf {
+    page {
+        Column(Modifier.fillMaxSize().padding(24.dp)) {
+            Text("My Document", style = MaterialTheme.typography.headlineLarge)
+            Spacer(Modifier.height(16.dp))
+            Text("Content goes here")
+        }
+    }
+}
+```
 
-class MyApplication : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        initKmPdfGenerator(this)
+### Multiple Pages
+
+```kotlin
+generator.generatePdf {
+    page {
+        Text("Page 1")
+    }
+    page {
+        Text("Page 2")
+    }
+    page {
+        Text("Page 3")
     }
 }
 ```
 
-iOS, Desktop, and WASM require no initialization.
-
-### 2. Generate a PDF from a Composable
+### Dynamic Pages
 
 ```kotlin
-import io.github.bigboyapps.kmpdf.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Text
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-
-suspend fun generatePdf() {
-    val generator = createKmPdfGenerator()
-
-    when (val result = generator.generatePdf(
-        config = PdfConfig(
-            pageSize = PageSize.A4,
-            margins = PageMargins.Normal,
-            fileName = "my_document.pdf"
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Text(
-                text = "Basketball Game",
-                style = MaterialTheme.typography.headlineLarge
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "March 15, 2024 at 6:00 PM",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Add any composable content
-            GameDetails(game)
-            QrCodeImage(gameUrl)
-        }
-    }) {
-        is PdfResult.Success -> {
-            println("PDF saved at: ${result.uri}")
-        }
-        is PdfResult.Error -> {
-            println("Error: ${result.message}")
+generator.generatePdf {
+    repeat(10) { pageIndex ->
+        page {
+            Column(Modifier.fillMaxSize().padding(24.dp)) {
+                Text("Page ${pageIndex + 1}")
+                // Your content for each page
+            }
         }
     }
 }
-
-// Or use defaults (A4 with normal margins)
-suspend fun generateSimplePdf() {
-    val generator = createKmPdfGenerator()
-
-    generator.generatePdf {
-        Text("Hello PDF!")
-    }
-}
 ```
 
-### 3. Share the PDF
-
-Use platform-specific share functionality to share the generated PDF:
-
-**Android:**
-```kotlin
-val intent = Intent(Intent.ACTION_SEND).apply {
-    type = "application/pdf"
-    putExtra(Intent.EXTRA_STREAM, Uri.parse(result.uri))
-}
-context.startActivity(Intent.createChooser(intent, "Share PDF"))
-```
-
-**iOS:**
-```swift
-let url = URL(fileURLWithPath: pdfPath)
-let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-present(activityVC, animated: true)
-```
-
-## API Reference
-
-### `KmPdfGenerator`
-
-Main interface for generating PDFs from composables.
+## Configuration
 
 ```kotlin
-interface KmPdfGenerator {
-    suspend fun generatePdf(
-        config: PdfConfig = PdfConfig(),
-        content: @Composable () -> Unit
-    ): PdfResult
-}
-```
-
-### `PdfConfig`
-
-Configuration for PDF generation.
-
-```kotlin
-data class PdfConfig(
-    val pageSize: PageSize = PageSize.A4,
-    val margins: PageMargins = PageMargins.Normal,
-    val fileName: String = "document.pdf"
+PdfConfig(
+    pageSize = PageSize.A4,      // A4, Letter, Legal, A3, A5, Tabloid
+    fileName = "report.pdf"       // Output filename
 )
 ```
 
-### `PageSize`
+### Available Page Sizes
 
-Predefined page sizes in points (1 point = 1/72 inch).
+- `PageSize.Letter` - 8.5" × 11" (default)
+- `PageSize.A4` - 210mm × 297mm
+- `PageSize.Legal` - 8.5" × 14"
+- `PageSize.A3` - 297mm × 420mm
+- `PageSize.A5` - 148mm × 210mm
+- `PageSize.Tabloid` - 11" × 17"
 
-```kotlin
-data class PageSize(val width: Dp, val height: Dp) {
-    companion object {
-        val A4 = PageSize(595.dp, 842.dp)        // 8.27 × 11.69 inches
-        val Letter = PageSize(612.dp, 792.dp)    // 8.5 × 11 inches
-        val Legal = PageSize(612.dp, 1008.dp)    // 8.5 × 14 inches
-        val A3 = PageSize(842.dp, 1191.dp)       // 11.69 × 16.54 inches
-        val A5 = PageSize(420.dp, 595.dp)        // 5.83 × 8.27 inches
-        val Tabloid = PageSize(792.dp, 1224.dp)  // 11 × 17 inches
-    }
-}
-```
-
-### `PageMargins`
-
-Margins in points.
-
-```kotlin
-data class PageMargins(
-    val top: Dp = 72.dp,
-    val bottom: Dp = 72.dp,
-    val left: Dp = 72.dp,
-    val right: Dp = 72.dp
-) {
-    companion object {
-        val None = PageMargins(0.dp, 0.dp, 0.dp, 0.dp)
-        val Normal = PageMargins(72.dp, 72.dp, 72.dp, 72.dp)     // 1 inch
-        val Narrow = PageMargins(36.dp, 36.dp, 36.dp, 36.dp)     // 0.5 inches
-        val Wide = PageMargins(108.dp, 108.dp, 108.dp, 108.dp)   // 1.5 inches
-    }
-}
-```
-
-### `PdfResult`
-
-Sealed class representing the result of PDF generation.
-
-```kotlin
-sealed class PdfResult {
-    data class Success(val uri: String) : PdfResult()
-    data class Error(val message: String, val exception: Throwable? = null) : PdfResult()
-}
-```
-
-### Factory Function
-
-```kotlin
-expect fun createKmPdfGenerator(): KmPdfGenerator
-```
-
-Creates a platform-specific instance of `KmPdfGenerator`.
-
-## Example: Game Invitation PDF
-
-Here's a complete example creating a game invitation PDF:
-
-```kotlin
-@Composable
-fun GameInvitationPdf(game: Game) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = game.title,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "${game.date} at ${game.time}",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // QR Code (using qrose library separately)
-        QrCodeImage(
-            data = "https://joinpickup.app/game/${game.id}",
-            size = 200.dp
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            InfoRow("Location", game.parkName)
-            InfoRow("Players", "${game.currentPlayers}/${game.maxPlayers}")
-            InfoRow("Skill Level", game.skillLevel)
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = "Scan the QR code to join the game",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.Gray
-        )
-    }
-}
-
-suspend fun shareGamePdf(game: Game) {
-    val generator = createKmPdfGenerator()
-
-    when (val result = generator.generatePdf(
-        config = PdfConfig(
-            pageSize = PageSize.Letter,
-            margins = PageMargins.Normal,
-            fileName = "game_${game.id}.pdf"
-        )
-    ) {
-        GameInvitationPdf(game)
-    }) {
-        is PdfResult.Success -> sharePdf(result.uri)
-        is PdfResult.Error -> showError(result.message)
-    }
-}
-```
-
-## Platform Details
+## Platform Setup
 
 ### Android
-- Uses `android.graphics.pdf.PdfDocument` for PDF generation
-- 🚧 Composable rendering coming soon
-- PDFs are saved to the app's cache directory
-- Minimum SDK: 26 (Android 8.0)
+
+Add FileProvider to `AndroidManifest.xml`:
+
+```xml
+<application>
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.fileprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+            android:name="android.support.FILE_PROVIDER_PATHS"
+            android:resource="@xml/file_paths" />
+    </provider>
+</application>
+```
+
+Create `res/xml/file_paths.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="pdfs" path="pdfs/" />
+</paths>
+```
 
 ### iOS
-- Uses `UIGraphics` PDF context for PDF generation
-- 🚧 Composable rendering coming soon
-- PDFs are saved to the documents directory
-- Minimum iOS: 13.0
+
+No additional setup required.
 
 ### Desktop (JVM)
-- 🚧 Coming soon
-- Will use Apache PDFBox or similar library
 
-### WASM
-- 🚧 Coming soon
-- Will use browser APIs for PDF generation
+PDFs are saved to `~/Documents/pdfs/`
 
-## Contributing
+## Error Handling
 
-Contributions are welcome! This library is open source under the MIT License.
-
-### Development Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/big-jared/kmpdf.git
-   cd kmpdf
-   ```
-
-2. Open in Android Studio or IntelliJ IDEA
-
-3. Build the project:
-   ```bash
-   ./gradlew :kmpdf:build
-   ```
-
-### Running Tests
-
-```bash
-./gradlew :kmpdf:test
+```kotlin
+when (result) {
+    is PdfResult.Success -> {
+        println("PDF: ${result.filePath}")
+        println("${result.pageCount} pages, ${result.fileSize} bytes")
+    }
+    is PdfResult.Error -> {
+        println("Error: ${result.message}")
+    }
+}
 ```
 
-### Publishing
+## Requirements
 
-To publish the library locally:
-
-```bash
-./gradlew :kmpdf:publishToMavenLocal
-```
+- Kotlin 2.2.21+
+- Compose Multiplatform 1.9.2+
+- Android: minSdk 26
+- iOS: iOS 14.0+
+- Desktop: JVM 17+
 
 ## License
 
-```
-MIT License
+MIT License - Copyright (c) 2025 Jared Guttromson
 
-Copyright (c) 2025 BigBoy Apps
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## Credits
-
-Built with:
-- [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html)
-- [Compose Multiplatform](https://www.jetbrains.com/lp/compose-multiplatform/)
-
-## Support
-
-For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/big-jared/kmpdf).
+See [LICENSE](LICENSE) for full details.
