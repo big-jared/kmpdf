@@ -5,7 +5,9 @@
       "Bash(./gradlew:*)",
       "Bash(./gradlew :kmpdf:compileKotlinAndroidDebug:*)",
       "Bash(chmod:*)",
-      "Bash(./gradlew :kmpdf:compileDebugKotlinAndroid:*)"
+      "Bash(./gradlew :kmpdf:compileDebugKotlinAndroid:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)"
     ],
     "deny": [],
     "ask": []

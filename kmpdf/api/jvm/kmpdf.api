@@ -1,0 +1,171 @@
+public final class io/github/bigboyapps/kmpdf/DesktopKmPdfGenerator : io/github/bigboyapps/kmpdf/KmPdfGenerator {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun generatePdf (Lio/github/bigboyapps/kmpdf/PdfConfig;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class io/github/bigboyapps/kmpdf/KmPdfGenerator {
+	public abstract fun generatePdf (Lio/github/bigboyapps/kmpdf/PdfConfig;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun generatePdf$default (Lio/github/bigboyapps/kmpdf/KmPdfGenerator;Lio/github/bigboyapps/kmpdf/PdfConfig;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/bigboyapps/kmpdf/KmPdfGenerator$DefaultImpls {
+	public static synthetic fun generatePdf$default (Lio/github/bigboyapps/kmpdf/KmPdfGenerator;Lio/github/bigboyapps/kmpdf/PdfConfig;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/bigboyapps/kmpdf/KmPdfGenerator_jvmKt {
+	public static final fun createKmPdfGenerator ()Lio/github/bigboyapps/kmpdf/KmPdfGenerator;
+	public static final fun sharePdf (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun sharePdf$default (Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
+public final class io/github/bigboyapps/kmpdf/PageSize {
+	public static final field $stable I
+	public static final field Companion Lio/github/bigboyapps/kmpdf/PageSize$Companion;
+	public synthetic fun <init> (FFLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-D9Ej5fM ()F
+	public final fun component2-D9Ej5fM ()F
+	public final fun copy-YgX7TsA (FF)Lio/github/bigboyapps/kmpdf/PageSize;
+	public static synthetic fun copy-YgX7TsA$default (Lio/github/bigboyapps/kmpdf/PageSize;FFILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PageSize;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight-D9Ej5fM ()F
+	public final fun getWidth-D9Ej5fM ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PageSize$Companion {
+	public final fun getA3 ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun getA4 ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun getA5 ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun getLegal ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun getLetter ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun getTabloid ()Lio/github/bigboyapps/kmpdf/PageSize;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfConfig {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;)Lio/github/bigboyapps/kmpdf/PdfConfig;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfConfig;Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFileName ()Ljava/lang/String;
+	public final fun getOutputDirectory ()Ljava/lang/String;
+	public final fun getPageSize ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfPageScope {
+	public static final field $stable I
+	public final fun page (Lkotlin/jvm/functions/Function2;)V
+}
+
+public abstract class io/github/bigboyapps/kmpdf/PdfResult {
+	public static final field $stable I
+}
+
+public abstract class io/github/bigboyapps/kmpdf/PdfResult$Error : io/github/bigboyapps/kmpdf/PdfResult {
+	public static final field $stable I
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getException ()Ljava/lang/Throwable;
+	public fun getMessage ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfResult$Error$ActivityLost : io/github/bigboyapps/kmpdf/PdfResult$Error {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$ActivityLost;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfResult$Error$ActivityLost;Ljava/lang/String;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$ActivityLost;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfResult$Error$IOError : io/github/bigboyapps/kmpdf/PdfResult$Error {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Throwable;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$IOError;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfResult$Error$IOError;Ljava/lang/String;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$IOError;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getException ()Ljava/lang/Throwable;
+	public fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfResult$Error$NotInitialized : io/github/bigboyapps/kmpdf/PdfResult$Error {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$NotInitialized;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfResult$Error$NotInitialized;Ljava/lang/String;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$NotInitialized;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfResult$Error$RenderingFailed : io/github/bigboyapps/kmpdf/PdfResult$Error {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Throwable;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$RenderingFailed;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfResult$Error$RenderingFailed;Ljava/lang/String;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$RenderingFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getException ()Ljava/lang/Throwable;
+	public fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfResult$Error$Unknown : io/github/bigboyapps/kmpdf/PdfResult$Error {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Throwable;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$Unknown;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfResult$Error$Unknown;Ljava/lang/String;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfResult$Error$Unknown;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getException ()Ljava/lang/Throwable;
+	public fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfResult$Success : io/github/bigboyapps/kmpdf/PdfResult {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JI)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JI)Lio/github/bigboyapps/kmpdf/PdfResult$Success;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfResult$Success;Ljava/lang/String;Ljava/lang/String;JIILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfResult$Success;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFilePath ()Ljava/lang/String;
+	public final fun getFileSize ()J
+	public final fun getPageCount ()I
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

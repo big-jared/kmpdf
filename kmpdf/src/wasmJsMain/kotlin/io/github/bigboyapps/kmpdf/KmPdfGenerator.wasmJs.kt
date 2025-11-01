@@ -14,13 +14,13 @@ actual fun sharePdf(uri: String, title: String) {
 class WasmKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,
-        content: @Composable () -> Unit
+        pages: PdfPageScope.() -> Unit
     ): PdfResult {
         return withContext(Dispatchers.Default) {
             try {
-                PdfResult.Error("Composable-to-PDF rendering not yet implemented for WASM. Coming soon!")
+                PdfResult.Error.Unknown("Composable-to-PDF rendering not yet implemented for WASM. Coming soon!")
             } catch (e: Exception) {
-                PdfResult.Error("Failed to generate PDF", e)
+                PdfResult.Error.Unknown("Failed to generate PDF", e)
             }
         }
     }
