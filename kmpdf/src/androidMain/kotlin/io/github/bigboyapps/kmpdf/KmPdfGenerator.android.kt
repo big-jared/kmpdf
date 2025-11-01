@@ -3,33 +3,45 @@ package io.github.bigboyapps.kmpdf
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas as AndroidCanvas
 import android.graphics.pdf.PdfDocument
-import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Recomposer
-import androidx.compose.ui.platform.AndroidUiDispatcher
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.compositionContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import kotlinx.coroutines.CoroutineScope
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
+import android.graphics.Canvas as AndroidCanvas
+
+private val logger = Logger.withTag("KmPdfGenerator")
 
 actual fun createKmPdfGenerator(): KmPdfGenerator = AndroidKmPdfGenerator()
 
 private var applicationContext: Context? = null
 private var activityRef: WeakReference<Activity>? = null
 
+/**
+ * Initializes the KmPdfGenerator with the given context.
+ *
+ * **Note**: As of version 1.1.0, this function is called automatically via a ContentProvider
+ * and manual initialization is typically not required. You only need to call this manually if:
+ * - You disabled auto-initialization in your AndroidManifest.xml
+ * - You need to re-initialize after the Activity reference was lost
+ *
+ * @param context The Android context. If this is an Activity, it will be held as a weak reference
+ *                for rendering Composables. The application context is also stored for file operations.
+ */
 fun initKmPdfGenerator(context: Context) {
     applicationContext = context.applicationContext
     if (context is Activity) {
@@ -43,10 +55,9 @@ actual fun sharePdf(uri: String, title: String) {
 
     try {
         val contentUri = if (uri.startsWith("content://")) {
-            Uri.parse(uri)
+            uri.toUri()
         } else {
-            // Convert file:// to content:// if needed
-            val file = File(Uri.parse(uri).path ?: return)
+            val file = File(uri.toUri().path ?: return)
             FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -69,75 +80,112 @@ actual fun sharePdf(uri: String, title: String) {
 class AndroidKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,
-        content: @Composable () -> Unit
+        pages: PdfPageScope.() -> Unit
     ): PdfResult {
+        logger.d { "Starting PDF generation: ${config.fileName}" }
         return withContext(Dispatchers.Main) {
-            var composeView: ComposeView? = null
-            var parentView: ViewGroup? = null
-
             try {
                 val context = applicationContext
-                    ?: return@withContext PdfResult.Error("KmPdfGenerator not initialized. Call initKmPdfGenerator(context) first.")
+                    ?: return@withContext PdfResult.Error.NotInitialized().also {
+                        logger.e { "PDF generation failed: KmPdfGenerator not initialized" }
+                    }
 
                 val activity = activityRef?.get()
-                    ?: return@withContext PdfResult.Error("Activity reference lost. Please reinitialize KmPdfGenerator.")
-
-                // Calculate page dimensions in pixels
-                val density = context.resources.displayMetrics.density
-                val widthPx = (config.pageSize.width.value * density).toInt()
-                val heightPx = (config.pageSize.height.value * density).toInt()
-
-                // Create a ComposeView and add it to the activity's content view
-                composeView = ComposeView(activity).apply {
-                    setContent {
-                        content()
+                    ?: return@withContext PdfResult.Error.ActivityLost().also {
+                        logger.e { "PDF generation failed: Activity reference lost" }
                     }
-                    // Make it invisible - render off-screen
-                    alpha = 0f
-                    translationX = -10000f
-                    translationY = -10000f
+
+                // Build pages
+                val pageScope = PdfPageScope()
+                pageScope.pages()
+                val pageContents = pageScope.pages
+
+                if (pageContents.isEmpty()) {
+                    return@withContext PdfResult.Error.Unknown("No pages defined")
                 }
 
-                // Add to the activity's root view (hidden off-screen)
-                parentView = activity.window.decorView.findViewById<ViewGroup>(android.R.id.content)
-                val layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
-                parentView?.addView(composeView, layoutParams)
+                val widthPt = config.pageSize.width.value.toInt()
+                val heightPt = config.pageSize.height.value.toInt()
 
-                // Wait for composition and layout
-                delay(200) // Give time for composition to complete
+                val scale = 2f
+                val widthPx = (widthPt * scale).toInt()
+                val heightPx = (heightPt * scale).toInt()
 
-                // Measure and layout
-                composeView.measure(
-                    View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
-                )
-                composeView.layout(0, 0, widthPx, heightPx)
+                logger.d { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
 
-                // Create bitmap and draw
-                val bitmap = withContext(Dispatchers.IO) {
-                    Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+                val pageBitmaps = pageContents.mapIndexed { index, pageContent ->
+                    logger.d { "Rendering page ${index + 1} of ${pageContents.size}" }
+
+                    var composeView: ComposeView? = null
+                    var parentView: ViewGroup? = null
+
+                    try {
+                        composeView = ComposeView(activity).apply {
+                            setContent {
+                                Box(
+                                    modifier = Modifier.size(
+                                        width = (widthPx / scale).dp,
+                                        height = (heightPx / scale).dp
+                                    )
+                                ) {
+                                    pageContent()
+                                }
+                            }
+                            alpha = 0f
+                            translationX = -10000f
+                            translationY = -10000f
+                        }
+
+                        parentView = activity.window.decorView.findViewById<ViewGroup>(android.R.id.content)
+                        val layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
+                        parentView?.addView(composeView, layoutParams)
+
+                        delay(200)
+
+                        composeView.measure(
+                            View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
+                        )
+                        composeView.layout(0, 0, widthPx, heightPx)
+
+                        delay(100)
+
+                        val bitmap = withContext(Dispatchers.IO) {
+                            createBitmap(widthPx, heightPx)
+                        }
+                        val canvas = AndroidCanvas(bitmap)
+                        composeView.draw(canvas)
+
+                        bitmap
+                    } finally {
+                        composeView?.let { view ->
+                            parentView?.removeView(view)
+                        }
+                    }
                 }
 
-                val canvas = AndroidCanvas(bitmap)
-                composeView.draw(canvas)
+                logger.d { "All pages rendered, creating PDF" }
 
-                // Remove the view from parent
-                parentView?.removeView(composeView)
-                composeView = null
-                parentView = null
-
-                // Create PDF on IO thread
                 val pdfResult = withContext(Dispatchers.IO) {
                     try {
                         val pdfDocument = PdfDocument()
-                        val pageInfo = PdfDocument.PageInfo.Builder(widthPx, heightPx, 1).create()
-                        val page = pdfDocument.startPage(pageInfo)
 
-                        // Draw the bitmap onto the PDF page
-                        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                        pdfDocument.finishPage(page)
+                        pageBitmaps.forEachIndexed { index, bitmap ->
+                            val pageInfo = PdfDocument.PageInfo.Builder(widthPt, heightPt, index + 1).create()
+                            val page = pdfDocument.startPage(pageInfo)
 
-                        // Save PDF to file
+                            val scaleX = widthPt.toFloat() / widthPx
+                            val scaleY = heightPt.toFloat() / heightPx
+
+                            page.canvas.save()
+                            page.canvas.scale(scaleX, scaleY)
+                            page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                            page.canvas.restore()
+
+                            pdfDocument.finishPage(page)
+                            bitmap.recycle()
+                        }
+
                         val outputDir = File(context.cacheDir, "pdfs").apply { mkdirs() }
                         val outputFile = File(outputDir, config.fileName)
 
@@ -145,11 +193,10 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                             pdfDocument.writeTo(outputStream)
                         }
                         pdfDocument.close()
+                        logger.d { "PDF written to: ${outputFile.absolutePath}" }
 
-                        // Clean up
-                        bitmap.recycle()
+                        val fileSize = outputFile.length()
 
-                        // Return file URI
                         val uri = try {
                             FileProvider.getUriForFile(
                                 context,
@@ -157,23 +204,26 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                                 outputFile
                             ).toString()
                         } catch (e: Exception) {
-                            // Fallback to file:// URI if FileProvider is not configured
                             outputFile.toURI().toString()
                         }
 
-                        PdfResult.Success(uri)
+                        logger.i { "PDF generation successful: $uri (${pageBitmaps.size} pages, $fileSize bytes)" }
+                        PdfResult.Success(
+                            uri = uri,
+                            filePath = outputFile.absolutePath,
+                            fileSize = fileSize,
+                            pageCount = pageBitmaps.size
+                        )
                     } catch (e: Exception) {
-                        PdfResult.Error("Failed to create PDF: ${e.message}", e)
+                        logger.e(e) { "Failed to create PDF: ${e.message}" }
+                        PdfResult.Error.IOError("Failed to create PDF: ${e.message}", e)
                     }
                 }
 
                 pdfResult
             } catch (e: Exception) {
-                // Clean up in case of error
-                composeView?.let { view ->
-                    parentView?.removeView(view)
-                }
-                PdfResult.Error("Failed to generate PDF: ${e.message}", e)
+                logger.e(e) { "Failed to generate PDF: ${e.message}" }
+                PdfResult.Error.Unknown("Failed to generate PDF: ${e.message}", e)
             }
         }
     }
