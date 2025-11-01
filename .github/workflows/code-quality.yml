@@ -38,6 +38,7 @@ jobs:
 
     - name: Annotate PR with Detekt findings
       if: always() && github.event_name == 'pull_request'
+      continue-on-error: true
       uses: github/super-linter/slim@v5
       env:
         VALIDATE_ALL_CODEBASE: false

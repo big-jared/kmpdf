@@ -48,7 +48,8 @@ update_version() {
 # Generate changelog from git log
 generate_changelog() {
     local last_tag=$1
-    local new_tag=$2
+    # new_tag parameter kept for future use
+    # local new_tag=$2
 
     print_info "Generating changelog from $last_tag to HEAD..."
 
@@ -115,7 +116,7 @@ main() {
 
     # Get new version from user
     echo ""
-    read -p "Enter new version (e.g., 1.0.1, 1.1.0, 2.0.0): " new_version
+    read -r -p "Enter new version (e.g., 1.0.1, 1.1.0, 2.0.0): " new_version
 
     if [[ ! $new_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         print_error "Invalid version format. Use semantic versioning (e.g., 1.0.0)"

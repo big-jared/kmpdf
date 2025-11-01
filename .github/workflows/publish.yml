@@ -32,7 +32,7 @@ jobs:
         SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       run: |
         brew install gpg
-        echo "$SIGNING_KEY" | gpg --dearmor > ${HOME}/secring.gpg
+        echo "$SIGNING_KEY" | gpg --dearmor > "${HOME}/secring.gpg"
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
@@ -44,11 +44,13 @@ jobs:
         SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
         SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
       run: |
-        echo "mavenCentralUsername=${MAVEN_CENTRAL_USERNAME}" >> gradle.properties
-        echo "mavenCentralPassword=${MAVEN_CENTRAL_PASSWORD}" >> gradle.properties
-        echo "signing.keyId=${SIGNING_KEY_ID}" >> gradle.properties
-        echo "signing.password=${SIGNING_KEY_PASSWORD}" >> gradle.properties
-        echo "signing.secretKeyRingFile=${HOME}/secring.gpg" >> gradle.properties
+        {
+          echo "mavenCentralUsername=${MAVEN_CENTRAL_USERNAME}"
+          echo "mavenCentralPassword=${MAVEN_CENTRAL_PASSWORD}"
+          echo "signing.keyId=${SIGNING_KEY_ID}"
+          echo "signing.password=${SIGNING_KEY_PASSWORD}"
+          echo "signing.secretKeyRingFile=${HOME}/secring.gpg"
+        } >> gradle.properties
 
     - name: Setup Xcode
       uses: maxim-lobanov/setup-xcode@v1
