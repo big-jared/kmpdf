@@ -3,7 +3,6 @@ package io.github.bigboyapps.kmpdf
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.pdf.PdfDocument
 import android.view.View
 import android.view.ViewGroup

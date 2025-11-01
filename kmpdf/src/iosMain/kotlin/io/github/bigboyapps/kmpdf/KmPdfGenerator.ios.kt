@@ -1,18 +1,40 @@
 package io.github.bigboyapps.kmpdf
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.*
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import platform.CoreFoundation.CFRelease
-import platform.CoreGraphics.*
-import platform.Foundation.*
-import platform.UIKit.*
+import platform.CoreGraphics.CGBitmapContextCreate
+import platform.CoreGraphics.CGBitmapContextCreateImage
+import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
+import platform.CoreGraphics.CGColorSpaceRelease
+import platform.CoreGraphics.CGContextRef
+import platform.CoreGraphics.CGImageAlphaInfo
+import platform.CoreGraphics.CGRect
+import platform.CoreGraphics.kCGImageAlphaPremultipliedLast
+import platform.Foundation.NSData
+import platform.Foundation.NSDocumentDirectory
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSURL
+import platform.Foundation.NSUserDomainMask
+import platform.Foundation.create
+import platform.UIKit.UIActivityViewController
+import platform.UIKit.UIApplication
+import platform.UIKit.UIGraphicsBeginPDFContextToData
+import platform.UIKit.UIGraphicsBeginPDFPageWithInfo
+import platform.UIKit.UIGraphicsEndPDFContext
+import platform.UIKit.UIGraphicsGetCurrentContext
+import platform.UIKit.UIGraphicsPushContext
+import platform.UIKit.UIImage
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
