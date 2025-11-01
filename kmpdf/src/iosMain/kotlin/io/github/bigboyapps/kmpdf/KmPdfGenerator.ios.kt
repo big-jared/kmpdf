@@ -12,6 +12,11 @@ import platform.UIKit.*
 
 actual fun createKmPdfGenerator(): KmPdfGenerator = IosKmPdfGenerator()
 
+actual fun sharePdf(uri: String, title: String) {
+    // iOS share sheet - to be implemented
+    println("Share PDF not yet implemented for iOS")
+}
+
 @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 class IosKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(

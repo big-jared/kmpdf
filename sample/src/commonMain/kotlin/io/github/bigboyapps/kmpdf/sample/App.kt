@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.bigboyapps.kmpdf.*
@@ -127,6 +128,8 @@ fun SampleScreen() {
                     }) {
                         is PdfResult.Success -> {
                             pdfUri = result.uri
+                            // Automatically open share sheet
+                            sharePdf(result.uri, "Share PDF")
                         }
                         is PdfResult.Error -> {
                             errorMessage = result.message

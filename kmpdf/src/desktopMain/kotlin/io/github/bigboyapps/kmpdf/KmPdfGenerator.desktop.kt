@@ -6,6 +6,11 @@ import kotlinx.coroutines.withContext
 
 actual fun createKmPdfGenerator(): KmPdfGenerator = DesktopKmPdfGenerator()
 
+actual fun sharePdf(uri: String, title: String) {
+    // Desktop file sharing - to be implemented
+    println("Share PDF not yet implemented for Desktop")
+}
+
 class DesktopKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,

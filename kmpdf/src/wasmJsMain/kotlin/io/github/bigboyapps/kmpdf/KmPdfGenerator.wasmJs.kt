@@ -6,6 +6,11 @@ import kotlinx.coroutines.withContext
 
 actual fun createKmPdfGenerator(): KmPdfGenerator = WasmKmPdfGenerator()
 
+actual fun sharePdf(uri: String, title: String) {
+    // WASM browser sharing - to be implemented
+    println("Share PDF not yet implemented for WASM")
+}
+
 class WasmKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,

@@ -51,3 +51,5 @@ sealed class PdfResult {
 }
 
 expect fun createKmPdfGenerator(): KmPdfGenerator
+
+expect fun sharePdf(uri: String, title: String = "Share PDF")
