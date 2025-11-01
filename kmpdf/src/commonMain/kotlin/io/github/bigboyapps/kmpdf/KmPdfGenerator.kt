@@ -63,10 +63,14 @@ class PdfPageScope internal constructor() {
  *
  * @property pageSize The size of each page in the PDF. Defaults to A4.
  * @property fileName The name of the generated PDF file. Defaults to "document.pdf".
+ * @property outputDirectory The directory path where the PDF will be saved.
+ *                          Defaults to platform-specific location. On Desktop/JVM, defaults to "~/Documents/pdfs/".
+ *                          Ignored on Android and iOS which use platform-specific directories.
  */
 data class PdfConfig(
     val pageSize: PageSize = PageSize.A4,
-    val fileName: String = "document.pdf"
+    val fileName: String = "document.pdf",
+    val outputDirectory: String? = null
 )
 
 /**

@@ -92,8 +92,9 @@ generator.generatePdf {
 
 ```kotlin
 PdfConfig(
-    pageSize = PageSize.A4,      // A4, Letter, Legal, A3, A5, Tabloid
-    fileName = "report.pdf"       // Output filename
+    pageSize = PageSize.A4,           // A4, Letter, Legal, A3, A5, Tabloid
+    fileName = "report.pdf",          // Output filename
+    outputDirectory = "/custom/path"  // Optional, Desktop only (defaults to ~/Documents/pdfs/)
 )
 ```
 
@@ -141,7 +142,7 @@ No additional setup required.
 
 ### Desktop (JVM)
 
-PDFs are saved to `~/Documents/pdfs/`
+PDFs are saved to `~/Documents/pdfs/` by default. You can specify a custom output directory using the `outputDirectory` parameter in `PdfConfig`.
 
 ## Error Handling
 

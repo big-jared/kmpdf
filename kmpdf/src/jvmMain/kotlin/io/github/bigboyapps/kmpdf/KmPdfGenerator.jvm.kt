@@ -102,7 +102,11 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
                         }
 
                         // Save to file
-                        val outputDir = File(System.getProperty("user.home"), "Documents/pdfs").apply {
+                        val outputDir = if (config.outputDirectory != null) {
+                            File(config.outputDirectory)
+                        } else {
+                            File(System.getProperty("user.home"), "Documents/pdfs")
+                        }.apply {
                             mkdirs()
                         }
                         val outputFile = File(outputDir, config.fileName)
