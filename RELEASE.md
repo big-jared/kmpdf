@@ -16,7 +16,38 @@ These are the same secrets used for the `motion-calendar` library.
 
 ## Release Steps
 
-### Using the Release Script (Recommended)
+### Option 1: PR with Release Label (Recommended)
+
+The easiest way to create a release is by merging a PR with the `release` label:
+
+1. Create a PR with your changes
+2. Add the `release` label to the PR
+3. Merge the PR
+
+The workflow will automatically:
+- Calculate the next version by incrementing the patch version (e.g., `1.0.0` → `1.0.1`)
+- Run all quality checks (detekt, apiCheck, tests, dokka)
+- Update the version in `kmpdf/build.gradle.kts`
+- Generate a changelog from git history
+- Create a git commit and tag
+- Push to the repository
+- Create a GitHub release with the changelog
+- Trigger the publish workflow to Maven Central
+
+This is the recommended approach as it fully automates the release process.
+
+### Option 2: Manual GitHub Actions Workflow
+
+For custom version numbers (e.g., patch releases, major versions):
+
+1. Go to [Actions → Create Release](https://github.com/big-jared/kmpdf/actions/workflows/release.yml)
+2. Click "Run workflow"
+3. Enter the specific version number (e.g., `1.0.1`, `2.0.0`)
+4. Click "Run workflow"
+
+The workflow will run the same steps as above but with your specified version.
+
+### Option 3: Local Release Script
 
 1. Make sure you're on the `main` branch with all changes committed:
    ```bash
@@ -31,6 +62,7 @@ These are the same secrets used for the `motion-calendar` library.
 
 3. The script will:
    - Check that your working directory is clean
+   - Run quality checks (detekt, apiCheck, tests, dokka)
    - Show the current version
    - Prompt you for the new version (e.g., `1.0.1`, `1.1.0`, `2.0.0`)
    - Update `kmpdf/build.gradle.kts` with the new version
@@ -45,7 +77,7 @@ These are the same secrets used for the `motion-calendar` library.
    - A GitHub Release will be created automatically
    - The library will be published to Maven Central
 
-### Manual Release (Alternative)
+### Option 4: Manual Release
 
 If you prefer to release manually:
 

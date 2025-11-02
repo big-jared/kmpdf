@@ -1,0 +1,166 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.1, 1.1.0, 2.0.0)'
+        required: true
+        type: string
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    name: Create release
+    runs-on: macos-latest
+    if: |
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       contains(github.event.pull_request.labels.*.name, 'release'))
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0  # Fetch all history for changelog generation
+
+    - name: Calculate next version
+      if: github.event_name == 'pull_request'
+      id: auto_version
+      run: |
+        # Extract current version from build.gradle.kts
+        CURRENT_VERSION=$(grep "^val libraryVersion = " kmpdf/build.gradle.kts | sed 's/val libraryVersion = "\(.*\)"/\1/')
+        echo "Current version: $CURRENT_VERSION"
+
+        # Parse version components
+        MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+        MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+        PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+
+        # Increment patch version
+        NEW_PATCH=$((PATCH + 1))
+        NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+        echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+        echo "Next version: $NEW_VERSION"
+
+    - name: Set version variable
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=${{ steps.auto_version.outputs.version }}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Validate version format
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "Error: Invalid version format: $VERSION"
+          echo "Use semantic versioning (e.g., 1.0.0)"
+          exit 1
+        fi
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Run quality checks
+      run: |
+        echo "Running Detekt..."
+        ./gradlew detekt
+
+        echo "Running binary compatibility check..."
+        ./gradlew apiCheck
+
+        echo "Running tests..."
+        ./gradlew test
+
+        echo "Generating documentation..."
+        ./gradlew dokkaHtml || true
+
+    - name: Update version in build.gradle.kts
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        sed -i.bak "s/^val libraryVersion = .*/val libraryVersion = \"$VERSION\"/" kmpdf/build.gradle.kts
+        rm kmpdf/build.gradle.kts.bak
+        echo "Updated version to $VERSION"
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+
+        {
+          echo "## What's Changed"
+          echo ""
+
+          if git log "${LAST_TAG}"..HEAD --merges --pretty=format:"%s" | grep -q "Merge pull request"; then
+            echo "### Pull Requests"
+            git log "${LAST_TAG}"..HEAD --merges --pretty=format:"* %s @%an" | grep "Merge pull request" | sed 's/Merge pull request //' | sed 's/ from .*//'
+            echo ""
+          fi
+
+          echo "### Commits"
+          git log "${LAST_TAG}"..HEAD --no-merges --pretty=format:"* %s (%h)" --reverse
+          echo ""
+          echo ""
+
+          echo "### Contributors"
+          git log "${LAST_TAG}"..HEAD --pretty=format:"* @%an" | sort -u
+          echo ""
+        } > CHANGELOG.md
+
+        echo "Generated changelog from ${LAST_TAG} to HEAD"
+
+    - name: Configure git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Commit version bump
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        git add kmpdf/build.gradle.kts
+        git commit -m "chore: bump version to $VERSION"
+        echo "Committed version bump"
+
+    - name: Create and push tag
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        TAG_NAME="v$VERSION"
+        git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+        git push origin main
+        git push origin "${TAG_NAME}"
+        echo "Created and pushed tag: ${TAG_NAME}"
+
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        gh release create "v$VERSION" \
+          --title "v$VERSION" \
+          --notes-file CHANGELOG.md
+
+    - name: Cleanup
+      if: always()
+      run: rm -f CHANGELOG.md
