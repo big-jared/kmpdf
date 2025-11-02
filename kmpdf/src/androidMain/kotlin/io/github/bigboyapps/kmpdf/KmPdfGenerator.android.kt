@@ -9,8 +9,11 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.graphics.createBitmap
@@ -122,18 +125,15 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                     try {
                         composeView = ComposeView(activity).apply {
                             setContent {
-                                Box(
-                                    modifier = Modifier.size(
-                                        width = (widthPx / scale).dp,
-                                        height = (heightPx / scale).dp
-                                    )
-                                ) {
+                                CompositionLocalProvider(LocalDensity provides Density(scale)) {
                                     pageContent()
                                 }
                             }
                             alpha = 0f
                             translationX = -10000f
                             translationY = -10000f
+                            clipToPadding = false
+                            clipChildren = false
                         }
 
                         parentView = activity.window.decorView.findViewById<ViewGroup>(android.R.id.content)
@@ -174,11 +174,10 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                             val pageInfo = PdfDocument.PageInfo.Builder(widthPt, heightPt, index + 1).create()
                             val page = pdfDocument.startPage(pageInfo)
 
-                            val scaleX = widthPt.toFloat() / widthPx
-                            val scaleY = heightPt.toFloat() / heightPx
+                            val scaleDown = 1f / scale
 
                             page.canvas.save()
-                            page.canvas.scale(scaleX, scaleY)
+                            page.canvas.scale(scaleDown, scaleDown)
                             page.canvas.drawBitmap(bitmap, 0f, 0f, null)
                             page.canvas.restore()
 

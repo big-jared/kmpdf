@@ -6,6 +6,15 @@
 
 Generate PDF documents from Compose UI on Android, iOS, and Desktop.
 
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Android | ✅ Supported | API 26+ (Android 8.0+) |
+| iOS | ✅ Supported | iOS 14.0+ (iosArm64, iosX64, iosSimulatorArm64) |
+| Desktop (JVM) | ✅ Supported | JVM 17+ (macOS, Windows, Linux) |
+| WASM | 🚧 Planned | Coming soon |
+
 ## Installation
 
 ```kotlin
@@ -46,7 +55,12 @@ when (result) {
 ### Single Page
 
 ```kotlin
-generator.generatePdf {
+generator.generatePdf(
+    config = PdfConfig(
+        pageSize = PageSize.A4,
+        fileName = "document.pdf"
+    )
+) {
     page {
         Column(Modifier.fillMaxSize().padding(24.dp)) {
             Text("My Document", style = MaterialTheme.typography.headlineLarge)
@@ -60,7 +74,9 @@ generator.generatePdf {
 ### Multiple Pages
 
 ```kotlin
-generator.generatePdf {
+generator.generatePdf(
+    config = PdfConfig(fileName = "multi-page.pdf")
+) {
     page {
         Text("Page 1")
     }
@@ -76,7 +92,9 @@ generator.generatePdf {
 ### Dynamic Pages
 
 ```kotlin
-generator.generatePdf {
+generator.generatePdf(
+    config = PdfConfig(fileName = "report.pdf")
+) {
     repeat(10) { pageIndex ->
         page {
             Column(Modifier.fillMaxSize().padding(24.dp)) {
@@ -100,8 +118,8 @@ PdfConfig(
 
 ### Available Page Sizes
 
-- `PageSize.Letter` - 8.5" × 11" (default)
-- `PageSize.A4` - 210mm × 297mm
+- `PageSize.A4` - 210mm × 297mm (default)
+- `PageSize.Letter` - 8.5" × 11"
 - `PageSize.Legal` - 8.5" × 14"
 - `PageSize.A3` - 297mm × 420mm
 - `PageSize.A5` - 148mm × 210mm
@@ -111,7 +129,9 @@ PdfConfig(
 
 ### Android
 
-Add FileProvider to `AndroidManifest.xml`:
+**Initialization:** KmPDF initializes automatically via ContentProvider. No manual setup required.
+
+Add FileProvider to your app's `AndroidManifest.xml` for sharing PDFs:
 
 ```xml
 <application>
