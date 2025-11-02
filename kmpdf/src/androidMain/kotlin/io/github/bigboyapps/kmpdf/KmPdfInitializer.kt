@@ -29,7 +29,7 @@ class KmPdfInitializer : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val context = context ?: return false
-        logger.d { "Auto-initializing KmPdfGenerator" }
+        logger.logDebug { "Auto-initializing KmPdfGenerator" }
         initKmPdfGenerator(context)
         return true
     }

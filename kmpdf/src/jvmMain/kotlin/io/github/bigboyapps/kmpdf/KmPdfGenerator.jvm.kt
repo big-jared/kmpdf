@@ -36,7 +36,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
     ): PdfResult {
-        logger.d { "Starting PDF generation: ${config.fileName}" }
+        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
 
         return withContext(Dispatchers.Default) {
             try {
@@ -58,8 +58,8 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
                 val pageWidthPx = (widthPt * scale).toInt()
                 val pageHeightPx = (heightPt * scale).toInt()
 
-                logger.d { "Page size: ${widthPt}x${heightPt}pt (${pageWidthPx}x${pageHeightPx}px at ${scale}x)" }
-                logger.d { "Rendering ${pageContents.size} pages" }
+                logger.logDebug { "Page size: ${widthPt}x${heightPt}pt (${pageWidthPx}x${pageHeightPx}px at ${scale}x)" }
+                logger.logDebug { "Rendering ${pageContents.size} pages" }
 
                 // Create PDF
                 withContext(Dispatchers.IO) {
@@ -68,7 +68,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
                     try {
                         // Render each page
                         pageContents.forEachIndexed { index, pageContent ->
-                            logger.d { "Rendering page ${index + 1} of ${pageContents.size}" }
+                            logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                             // Render composable to Image
                             val skiaImage = renderComposableToImage(
@@ -114,7 +114,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
 
                         val fileSize = outputFile.length()
 
-                        logger.i { "PDF generation successful: ${outputFile.absolutePath} (${pageContents.size} pages, $fileSize bytes)" }
+                        logger.logInfo { "PDF generation successful: ${outputFile.absolutePath} (${pageContents.size} pages, $fileSize bytes)" }
                         PdfResult.Success(
                             uri = outputFile.absolutePath,
                             filePath = outputFile.absolutePath,

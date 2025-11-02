@@ -3,6 +3,57 @@ package io.github.bigboyapps.kmpdf
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+
+/**
+ * Controls the logging behavior of KmPDF.
+ */
+object KmPdfLogging {
+    private var minSeverity: Severity = Severity.Error
+
+    /**
+     * Sets the minimum log level for KmPDF.
+     *
+     * By default, only errors are logged. Set to [Severity.Debug] to see detailed logs
+     * about PDF generation progress.
+     *
+     * @param severity The minimum severity level to log. Messages below this level will be suppressed.
+     *
+     * Example:
+     * ```kotlin
+     * // Enable debug logging
+     * KmPdfLogging.setMinSeverity(Severity.Debug)
+     *
+     * // Only show errors (default)
+     * KmPdfLogging.setMinSeverity(Severity.Error)
+     * ```
+     */
+    fun setMinSeverity(severity: Severity) {
+        minSeverity = severity
+    }
+
+    /**
+     * Gets the current minimum log severity level.
+     */
+    fun getMinSeverity(): Severity = minSeverity
+
+    internal fun isLoggable(severity: Severity): Boolean {
+        return severity.ordinal >= minSeverity.ordinal
+    }
+}
+
+internal inline fun Logger.logDebug(message: () -> String) {
+    if (KmPdfLogging.isLoggable(Severity.Debug)) {
+        d(message())
+    }
+}
+
+internal inline fun Logger.logInfo(message: () -> String) {
+    if (KmPdfLogging.isLoggable(Severity.Info)) {
+        i(message())
+    }
+}
 
 /**
  * Defines the size of a PDF page.

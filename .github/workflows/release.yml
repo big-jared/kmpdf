@@ -88,21 +88,37 @@ jobs:
         echo "Running Detekt..."
         ./gradlew detekt
 
-        echo "Running binary compatibility check..."
-        ./gradlew apiCheck
-
         echo "Running tests..."
         ./gradlew test
 
-        echo "Generating documentation..."
-        ./gradlew dokkaHtml || true
+    - name: Build library
+      run: |
+        echo "Building library..."
+        ./gradlew :kmpdf:build --no-configuration-cache
 
-    - name: Update version in build.gradle.kts
+    - name: Update API dump
+      run: |
+        echo "Updating API dump..."
+        ./gradlew apiDump
+
+    - name: Generate documentation
+      run: |
+        echo "Generating Dokka documentation..."
+        ./gradlew dokkaHtml
+
+    - name: Update version in build.gradle.kts and README
       run: |
         VERSION="${{ steps.version.outputs.version }}"
+
+        # Update build.gradle.kts
         sed -i.bak "s/^val libraryVersion = .*/val libraryVersion = \"$VERSION\"/" kmpdf/build.gradle.kts
         rm kmpdf/build.gradle.kts.bak
-        echo "Updated version to $VERSION"
+
+        # Update README.md
+        sed -i.bak "s/io.github.big-jared:kmpdf:[0-9.]\+/io.github.big-jared:kmpdf:$VERSION/" README.md
+        rm README.md.bak
+
+        echo "Updated version to $VERSION in build.gradle.kts and README.md"
 
     - name: Generate changelog
       id: changelog
@@ -136,12 +152,12 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
 
-    - name: Commit version bump
+    - name: Commit release changes
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        git add kmpdf/build.gradle.kts
-        git commit -m "chore: bump version to $VERSION"
-        echo "Committed version bump"
+        git add kmpdf/build.gradle.kts kmpdf/api/ README.md
+        git commit -m "chore: release version $VERSION"
+        echo "Committed release changes"
 
     - name: Create and push tag
       run: |

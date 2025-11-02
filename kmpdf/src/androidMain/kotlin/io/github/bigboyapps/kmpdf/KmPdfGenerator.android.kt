@@ -85,7 +85,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
     ): PdfResult {
-        logger.d { "Starting PDF generation: ${config.fileName}" }
+        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
         return withContext(Dispatchers.Main) {
             try {
                 val context = applicationContext
@@ -114,10 +114,10 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 val widthPx = (widthPt * scale).toInt()
                 val heightPx = (heightPt * scale).toInt()
 
-                logger.d { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
+                logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
 
                 val pageBitmaps = pageContents.mapIndexed { index, pageContent ->
-                    logger.d { "Rendering page ${index + 1} of ${pageContents.size}" }
+                    logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                     var composeView: ComposeView? = null
                     var parentView: ViewGroup? = null
@@ -164,7 +164,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                     }
                 }
 
-                logger.d { "All pages rendered, creating PDF" }
+                logger.logDebug { "All pages rendered, creating PDF" }
 
                 val pdfResult = withContext(Dispatchers.IO) {
                     try {
@@ -192,7 +192,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                             pdfDocument.writeTo(outputStream)
                         }
                         pdfDocument.close()
-                        logger.d { "PDF written to: ${outputFile.absolutePath}" }
+                        logger.logDebug { "PDF written to: ${outputFile.absolutePath}" }
 
                         val fileSize = outputFile.length()
 
@@ -206,7 +206,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                             outputFile.toURI().toString()
                         }
 
-                        logger.i { "PDF generation successful: $uri (${pageBitmaps.size} pages, $fileSize bytes)" }
+                        logger.logInfo { "PDF generation successful: $uri (${pageBitmaps.size} pages, $fileSize bytes)" }
                         PdfResult.Success(
                             uri = uri,
                             filePath = outputFile.absolutePath,

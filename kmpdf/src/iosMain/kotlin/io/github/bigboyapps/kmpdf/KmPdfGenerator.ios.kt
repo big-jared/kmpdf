@@ -72,7 +72,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
     ): PdfResult {
-        logger.d { "Starting PDF generation: ${config.fileName}" }
+        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
 
         return withContext(Dispatchers.Main) {
             try {
@@ -94,7 +94,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 val widthPx = (widthPt * scale).toInt()
                 val heightPx = (heightPt * scale).toInt()
 
-                logger.d { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
+                logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
 
                 // Render each page to an image
                 val pageImages = pageContents.map { pageContent ->
@@ -172,7 +172,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
                     val fileAttributes = fileManager.attributesOfItemAtPath(outputPath, error = null)
                     val fileSize = (fileAttributes?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
 
-                    logger.i { "PDF generation successful: $outputPath (${pageImages.size} pages, $fileSize bytes)" }
+                    logger.logInfo { "PDF generation successful: $outputPath (${pageImages.size} pages, $fileSize bytes)" }
                     PdfResult.Success(
                         uri = outputPath,
                         filePath = outputPath,

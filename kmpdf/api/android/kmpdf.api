@@ -31,6 +31,13 @@ public final class io/github/bigboyapps/kmpdf/KmPdfInitializer : android/content
 	public fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
 }
 
+public final class io/github/bigboyapps/kmpdf/KmPdfLogging {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/bigboyapps/kmpdf/KmPdfLogging;
+	public final fun getMinSeverity ()Lco/touchlab/kermit/Severity;
+	public final fun setMinSeverity (Lco/touchlab/kermit/Severity;)V
+}
+
 public final class io/github/bigboyapps/kmpdf/PageSize {
 	public static final field $stable I
 	public static final field Companion Lio/github/bigboyapps/kmpdf/PageSize$Companion;

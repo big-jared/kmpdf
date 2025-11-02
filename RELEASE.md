@@ -12,8 +12,6 @@ Ensure the following secrets are configured in GitHub Settings → Secrets and v
 - `SIGNING_KEY_ID` - Your GPG key ID (last 8 characters)
 - `SIGNING_KEY_PASSWORD` - Your GPG key password
 
-These are the same secrets used for the `motion-calendar` library.
-
 ## Release Steps
 
 ### Option 1: PR with Release Label (Recommended)
@@ -24,85 +22,30 @@ The easiest way to create a release is by merging a PR with the `release` label:
 2. Add the `release` label to the PR
 3. Merge the PR
 
-The workflow will automatically:
+The GitHub Actions workflow will automatically:
 - Calculate the next version by incrementing the patch version (e.g., `1.0.0` → `1.0.1`)
-- Run all quality checks (detekt, apiCheck, tests, dokka)
+- Run quality checks (detekt, tests)
+- Update API dump files (`apiDump`)
+- Generate Dokka documentation
 - Update the version in `kmpdf/build.gradle.kts`
 - Generate a changelog from git history
-- Create a git commit and tag
-- Push to the repository
+- Commit all changes (version bump + API dump)
+- Create and push a git tag
 - Create a GitHub release with the changelog
 - Trigger the publish workflow to Maven Central
 
-This is the recommended approach as it fully automates the release process.
+This is the recommended approach as it fully automates the release process in a clean CI environment.
 
-### Option 2: Manual GitHub Actions Workflow
+### Option 2: Manual Workflow Dispatch
 
-For custom version numbers (e.g., patch releases, major versions):
+For custom version numbers (e.g., minor or major version bumps):
 
 1. Go to [Actions → Create Release](https://github.com/big-jared/kmpdf/actions/workflows/release.yml)
 2. Click "Run workflow"
-3. Enter the specific version number (e.g., `1.0.1`, `2.0.0`)
+3. Enter the specific version number (e.g., `1.1.0`, `2.0.0`)
 4. Click "Run workflow"
 
-The workflow will run the same steps as above but with your specified version.
-
-### Option 3: Local Release Script
-
-1. Make sure you're on the `main` branch with all changes committed:
-   ```bash
-   git checkout main
-   git pull origin main
-   ```
-
-2. Run the release script:
-   ```bash
-   ./scripts/release.sh
-   ```
-
-3. The script will:
-   - Check that your working directory is clean
-   - Run quality checks (detekt, apiCheck, tests, dokka)
-   - Show the current version
-   - Prompt you for the new version (e.g., `1.0.1`, `1.1.0`, `2.0.0`)
-   - Update `kmpdf/build.gradle.kts` with the new version
-   - Generate a changelog from commits and PRs since the last release
-   - Create a version bump commit
-   - Create and push a version tag (e.g., `v1.0.1`)
-   - Trigger the GitHub Actions publish workflow
-
-4. Monitor the release:
-   - Visit https://github.com/big-jared/kmpdf/actions
-   - The "Publish to Maven Central" workflow will run
-   - A GitHub Release will be created automatically
-   - The library will be published to Maven Central
-
-### Option 4: Manual Release
-
-If you prefer to release manually:
-
-1. Update the version in `kmpdf/build.gradle.kts`:
-   ```kotlin
-   val libraryVersion = "x.y.z"
-   ```
-
-2. Commit the version bump:
-   ```bash
-   git add kmpdf/build.gradle.kts
-   git commit -m "chore: bump version to x.y.z"
-   git push origin main
-   ```
-
-3. Create and push a tag:
-   ```bash
-   git tag vx.y.z
-   git push origin vx.y.z
-   ```
-
-4. The GitHub Actions workflow will automatically:
-   - Build the library
-   - Publish to Maven Central
-   - Create a GitHub Release
+The workflow will run the same automated steps as Option 1 but with your specified version.
 
 ## Versioning
 
@@ -112,14 +55,28 @@ We follow [Semantic Versioning](https://semver.org/):
 - **Minor** version (0.x.0): New features, backwards compatible
 - **Patch** version (0.0.x): Bug fixes, backwards compatible
 
-## Changelog
+The automated release workflow increments the **patch** version by default. Use manual workflow dispatch for minor/major bumps.
 
-The release script automatically generates a changelog including:
-- Merged pull requests
-- Individual commits
-- Contributors
+## What Happens During Release
 
-This changelog is saved to `CHANGELOG_vX.Y.Z.md` and should be added to the GitHub Release notes.
+1. **Quality Checks**: Detekt static analysis and all tests must pass
+2. **API Dump**: Binary compatibility signatures are updated automatically
+3. **Documentation**: Dokka HTML documentation is generated
+4. **Version Update**: `kmpdf/build.gradle.kts` is updated with the new version
+5. **Changelog**: Generated from git commits and PRs since the last tag
+6. **Git Operations**: Changes are committed, tagged, and pushed to `main`
+7. **GitHub Release**: Created with the generated changelog
+8. **Maven Central**: Publish workflow is triggered to deploy the artifact
+
+## Monitoring the Release
+
+After triggering a release:
+
+1. Visit https://github.com/big-jared/kmpdf/actions
+2. Watch the "Create Release" workflow complete
+3. Once successful, the "Publish to Maven Central" workflow will start
+4. Verify the GitHub Release was created: https://github.com/big-jared/kmpdf/releases
+5. After publishing completes, verify on Maven Central: https://central.sonatype.com/artifact/io.github.big-jared/kmpdf
 
 ## Troubleshooting
 
@@ -137,14 +94,25 @@ This changelog is saved to `CHANGELOG_vX.Y.Z.md` and should be added to the GitH
 
 ### Release Already Exists
 
-If you need to republish:
+If you need to redo a release:
 1. Delete the tag locally: `git tag -d vX.Y.Z`
 2. Delete the tag remotely: `git push origin :refs/tags/vX.Y.Z`
 3. Delete the GitHub Release (if created)
-4. Re-run the release process
+4. Reset main to before the release commit (if needed)
+5. Re-run the release process
 
 ## After Release
 
-1. Update the README with the new version in installation instructions
-2. Announce the release on relevant channels
-3. Close any related issues/milestones
+1. Verify the release appears on Maven Central (can take ~30 minutes)
+2. Check that documentation was deployed to GitHub Pages: https://big-jared.github.io/kmpdf/
+3. Update dependent projects to use the new version
+4. Announce the release on relevant channels
+5. Close any related issues/milestones
+
+## Documentation
+
+API documentation is automatically published to GitHub Pages on every release. The workflow:
+1. Generates Dokka HTML documentation
+2. Deploys to https://big-jared.github.io/kmpdf/
+
+You can also manually trigger documentation deployment from the [Actions tab](https://github.com/big-jared/kmpdf/actions/workflows/docs.yml).
