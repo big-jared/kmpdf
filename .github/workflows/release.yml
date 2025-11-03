@@ -155,9 +155,13 @@ jobs:
     - name: Commit release changes
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        git add kmpdf/build.gradle.kts kmpdf/api/ README.md
-        git commit -m "chore: release version $VERSION"
-        echo "Committed release changes"
+        git add kmpdf/build.gradle.kts kmpdf/api/ README.md || true
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "chore: release version $VERSION"
+          echo "Committed release changes"
+        fi
 
     - name: Create and push tag
       run: |
