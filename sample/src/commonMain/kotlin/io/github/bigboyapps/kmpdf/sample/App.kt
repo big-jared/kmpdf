@@ -532,7 +532,7 @@ fun MixedContentSample() {
             "Flexible Layouts" to "Support for complex layouts including columns, rows, and nested structures",
             "Typography" to "Full Material Design typography system with multiple text styles",
             "Custom Styling" to "Apply colors, backgrounds, shapes, and other styling options",
-            "Automatic Pagination" to "Content automatically flows across multiple pages when needed"
+            "Multi-Page Documents" to "Create documents with multiple pages using simple page { } blocks"
         ).forEach { (title, description) ->
             Column(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)

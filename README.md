@@ -89,18 +89,17 @@ generator.generatePdf(
 }
 ```
 
-### Dynamic Pages
+### Generating Pages Programmatically
+
+Use loops or any Kotlin logic to create pages from data:
 
 ```kotlin
 generator.generatePdf(
     config = PdfConfig(fileName = "report.pdf")
 ) {
-    repeat(10) { pageIndex ->
+    items.forEach { item ->
         page {
-            Column(Modifier.fillMaxSize().padding(24.dp)) {
-                Text("Page ${pageIndex + 1}")
-                // Your content for each page
-            }
+            ItemContent(item)
         }
     }
 }
