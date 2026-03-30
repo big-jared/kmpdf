@@ -128,7 +128,17 @@ PdfConfig(
 
 ### Android
 
-**Initialization:** KmPDF initializes automatically via ContentProvider. No manual setup required.
+Initialize KmPDF in your Activity's `onCreate()`:
+
+```kotlin
+import io.github.bigboyapps.kmpdf.initKmPdfGenerator
+
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    initKmPdfGenerator(this)
+    // ...
+}
+```
 
 Add FileProvider to your app's `AndroidManifest.xml` for sharing PDFs:
 
