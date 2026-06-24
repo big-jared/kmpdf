@@ -9,7 +9,7 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.28.0"
 }
 
-val libraryVersion = "1.0.0"
+val libraryVersion = "1.1.0"
 
 mavenPublishing {
     coordinates(
