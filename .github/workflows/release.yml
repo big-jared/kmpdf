@@ -197,7 +197,7 @@ jobs:
     - name: Publish to Maven Central
       run: |
         echo "Publishing to Maven Central..."
-        ./gradlew :kmpdf:publishAllPublicationsToMavenCentralRepository --no-configuration-cache
+        ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache
 
     - name: Create GitHub Release
       env:
