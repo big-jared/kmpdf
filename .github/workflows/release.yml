@@ -131,7 +131,7 @@ jobs:
 
           if git log "${LAST_TAG}"..HEAD --merges --pretty=format:"%s" | grep -q "Merge pull request"; then
             echo "### Pull Requests"
-            git log "${LAST_TAG}"..HEAD --merges --pretty=format:"* %s @%an" | grep "Merge pull request" | sed 's/Merge pull request //' | sed 's/ from .*//'
+            git log "${LAST_TAG}"..HEAD --merges --pretty=format:"* %s (%an)" | grep "Merge pull request" | sed 's/Merge pull request //' | sed 's/ from .*//'
             echo ""
           fi
 
@@ -141,7 +141,7 @@ jobs:
           echo ""
 
           echo "### Contributors"
-          git log "${LAST_TAG}"..HEAD --pretty=format:"* @%an" | sort -u
+          git log "${LAST_TAG}"..HEAD --pretty=format:"* %an" | sort -u
           echo ""
         } > CHANGELOG.md
 
