@@ -195,7 +195,8 @@ sealed class PdfResult {
         open val exception: Throwable? = null
     ) : PdfResult() {
         /**
-         * KmPdfGenerator was not initialized. On Android, call [initKmPdfGenerator] first.
+         * KmPdfGenerator was not initialized. On Android this happens automatically at startup; if the
+         * KmPdfInitializer provider was removed, call [initKmPdfGenerator] first.
          */
         data class NotInitialized(
             override val message: String = "KmPdfGenerator not initialized. Call initKmPdfGenerator(context) first."
@@ -237,7 +238,8 @@ sealed class PdfResult {
 /**
  * Creates a platform-specific instance of [KmPdfGenerator].
  *
- * **Android**: Ensure you call [initKmPdfGenerator] first, typically in your Activity's onCreate.
+ * **Android**: Initialized automatically at startup. If you removed the KmPdfInitializer provider,
+ * call [initKmPdfGenerator] first, typically in your Activity's onCreate.
  * **iOS**: No initialization required.
  *
  * @return A platform-specific implementation of [KmPdfGenerator].

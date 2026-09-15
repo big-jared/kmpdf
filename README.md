@@ -128,7 +128,9 @@ PdfConfig(
 
 ### Android
 
-Initialize KmPDF in your Activity's `onCreate()`:
+Since 1.1.0, KmPDF initializes automatically at app startup through a `ContentProvider`, so no setup code is needed.
+
+On 1.0.0, or if you've removed the `KmPdfInitializer` provider from your manifest, initialize KmPDF in your Activity's `onCreate()`:
 
 ```kotlin
 import io.github.bigboyapps.kmpdf.initKmPdfGenerator

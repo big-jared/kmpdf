@@ -1,30 +1,22 @@
 package io.github.bigboyapps.kmpdf
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
-import platform.CoreFoundation.CFRelease
-import platform.CoreGraphics.CGBitmapContextCreate
-import platform.CoreGraphics.CGBitmapContextCreateImage
-import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
-import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawImage
-import platform.CoreGraphics.CGContextRef
 import platform.CoreGraphics.CGContextRestoreGState
 import platform.CoreGraphics.CGContextSaveGState
 import platform.CoreGraphics.CGContextScaleCTM
 import platform.CoreGraphics.CGContextTranslateCTM
-import platform.CoreGraphics.CGImageAlphaInfo
-import platform.CoreGraphics.CGRect
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSData
 import platform.Foundation.NSDocumentDirectory
@@ -37,31 +29,64 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
-import platform.UIKit.UIGraphicsBeginPDFContextToData
 import platform.UIKit.UIGraphicsBeginPDFContextToFile
 import platform.UIKit.UIGraphicsBeginPDFPageWithInfo
 import platform.UIKit.UIGraphicsEndPDFContext
 import platform.UIKit.UIGraphicsGetCurrentContext
-import platform.UIKit.UIGraphicsPushContext
 import platform.UIKit.UIImage
+import platform.UIKit.UIViewController
+import platform.UIKit.UIWindow
+import platform.UIKit.popoverPresentationController
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
 actual fun createKmPdfGenerator(): KmPdfGenerator = IosKmPdfGenerator()
 
+@OptIn(ExperimentalForeignApi::class)
 actual fun sharePdf(uri: String, title: String) {
+    val presenter = topViewController() ?: run {
+        logger.e { "Failed to share PDF: no view controller to present from" }
+        return
+    }
+
     val url = NSURL.fileURLWithPath(uri)
     val activityController = UIActivityViewController(
         activityItems = listOf(url),
         applicationActivities = null
     )
 
-    val rootViewController = UIApplication.sharedApplication.keyWindow?.rootViewController
-    rootViewController?.presentViewController(
+    // On iPad the share sheet is a popover, which UIKit refuses to present without an anchor
+    activityController.popoverPresentationController?.let { popover ->
+        val view = presenter.view
+        popover.sourceView = view
+        popover.sourceRect = view.bounds.useContents {
+            CGRectMake(size.width / 2, size.height / 2, 0.0, 0.0)
+        }
+        popover.permittedArrowDirections = 0uL
+    }
+
+    presenter.presentViewController(
         activityController,
         animated = true,
         completion = null
     )
+}
+
+/**
+ * The view controller on top of the key window. Presenting from the root view controller fails
+ * silently while it's already presenting something else.
+ */
+private fun topViewController(): UIViewController? {
+    val application = UIApplication.sharedApplication
+    val windows = application.windows.mapNotNull { it as? UIWindow }
+    val window = application.keyWindow
+        ?: windows.firstOrNull { it.keyWindow }
+        ?: windows.firstOrNull()
+
+    var controller = window?.rootViewController ?: return null
+    while (true) {
+        controller = controller.presentedViewController ?: return controller
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
@@ -72,6 +97,8 @@ class IosKmPdfGenerator : KmPdfGenerator {
     ): PdfResult {
         logger.logDebug { "Starting PDF generation: ${config.fileName}" }
 
+        // Everything runs on the main thread: Compose rendering requires it, and the UIGraphics
+        // PDF context belongs to the thread that created it
         return withContext(Dispatchers.Main) {
             try {
                 // Build pages
@@ -94,103 +121,145 @@ class IosKmPdfGenerator : KmPdfGenerator {
 
                 logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
 
-                // Render each page to an image
-                val pageImages = pageContents.map { pageContent ->
-                    val scene = ImageComposeScene(
-                        width = widthPx,
-                        height = heightPx,
-                        density = Density(scale.toFloat())
-                    ) {
-                        pageContent()
-                    }
-                    scene.render()
+                val outputPath = outputPath(config.fileName)
+                // Pages go to a temporary file that replaces the output only once every page succeeds,
+                // so a failed render doesn't leave a partial PDF or overwrite an earlier one
+                val tempPath = "$outputPath.partial"
+                val fileManager = NSFileManager.defaultManager
+                val bounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
+
+                if (!UIGraphicsBeginPDFContextToFile(tempPath, bounds, null)) {
+                    return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
                 }
 
-                // Move to IO dispatcher for file operations
-                withContext(Dispatchers.IO) {
-                    // Get documents directory
-                    val documentsPath = NSSearchPathForDirectoriesInDomains(
-                        NSDocumentDirectory,
-                        NSUserDomainMask,
-                        true
-                    ).firstOrNull() as? String ?: throw Exception("Could not find documents directory")
+                var allPagesWritten = false
+                try {
+                    // Render and write one page at a time so only one page image is in memory
+                    pageContents.forEachIndexed { index, pageContent ->
+                        logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
-                    val pdfDir = "$documentsPath/pdfs"
-                    val fileManager = NSFileManager.defaultManager
-
-                    // Create directory if needed
-                    if (!fileManager.fileExistsAtPath(pdfDir)) {
-                        fileManager.createDirectoryAtPath(
-                            pdfDir,
-                            withIntermediateDirectories = true,
-                            attributes = null,
-                            error = null
-                        )
-                    }
-
-                    val outputPath = "$pdfDir/${config.fileName}"
-
-                    // Create PDF
-                    memScoped {
-                        val bounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
-                        UIGraphicsBeginPDFContextToFile(outputPath, bounds, null)
-
-                        // Render each page
-                        pageImages.forEach { pageImage ->
-                            UIGraphicsBeginPDFPageWithInfo(bounds, null)
-
-                            val context = UIGraphicsGetCurrentContext()
-                                ?: throw Exception("Failed to get graphics context")
-
-                            // Convert Skia Image to UIImage
-                            val uiImage = pageImage.toUIImage()
-
-                            // Save graphics state
-                            CGContextSaveGState(context)
-
-                            uiImage.CGImage?.let { img ->
-                                // Flip coordinate system for image drawing
-                                // PDF origin is at bottom-left, images render top-to-bottom
-                                CGContextTranslateCTM(context, 0.0, heightPt)
-                                CGContextScaleCTM(context, 1.0, -1.0)
-
-                                // Draw the full page image
-                                val drawRect = CGRectMake(0.0, 0.0, widthPt, heightPt)
-                                CGContextDrawImage(context, drawRect, img)
-                            }
-
-                            // Restore graphics state
-                            CGContextRestoreGState(context)
+                        val uiImage = try {
+                            renderPage(pageContent, widthPx, heightPx, scale)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            logger.e(e) { "Failed to render page ${index + 1}: ${e.message}" }
+                            return@withContext PdfResult.Error.RenderingFailed(
+                                "Failed to render page ${index + 1}: ${e.message}",
+                                e
+                            )
                         }
 
-                        UIGraphicsEndPDFContext()
+                        UIGraphicsBeginPDFPageWithInfo(bounds, null)
+
+                        val context = UIGraphicsGetCurrentContext()
+                            ?: throw IllegalStateException("Failed to get graphics context")
+
+                        // Save graphics state
+                        CGContextSaveGState(context)
+
+                        uiImage.CGImage?.let { img ->
+                            // Flip coordinate system for image drawing
+                            // PDF origin is at bottom-left, images render top-to-bottom
+                            CGContextTranslateCTM(context, 0.0, heightPt)
+                            CGContextScaleCTM(context, 1.0, -1.0)
+
+                            // Draw the full page image
+                            val drawRect = CGRectMake(0.0, 0.0, widthPt, heightPt)
+                            CGContextDrawImage(context, drawRect, img)
+                        }
+
+                        // Restore graphics state
+                        CGContextRestoreGState(context)
                     }
-
-                    // Get file size
-                    val fileAttributes = fileManager.attributesOfItemAtPath(outputPath, error = null)
-                    val fileSize = (fileAttributes?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
-
-                    logger.logInfo { "PDF generation successful: $outputPath (${pageImages.size} pages, $fileSize bytes)" }
-                    PdfResult.Success(
-                        uri = outputPath,
-                        filePath = outputPath,
-                        fileSize = fileSize,
-                        pageCount = pageImages.size
-                    )
+                    allPagesWritten = true
+                } finally {
+                    UIGraphicsEndPDFContext()
+                    if (!allPagesWritten) {
+                        fileManager.removeItemAtPath(tempPath, error = null)
+                    }
                 }
+
+                fileManager.removeItemAtPath(outputPath, error = null)
+                if (!fileManager.moveItemAtPath(tempPath, toPath = outputPath, error = null)) {
+                    fileManager.removeItemAtPath(tempPath, error = null)
+                    return@withContext PdfResult.Error.IOError("Failed to move PDF into place at $outputPath")
+                }
+
+                // Get file size
+                val fileAttributes = fileManager.attributesOfItemAtPath(outputPath, error = null)
+                val fileSize = (fileAttributes?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
+
+                logger.logInfo { "PDF generation successful: $outputPath (${pageContents.size} pages, $fileSize bytes)" }
+                PdfResult.Success(
+                    uri = outputPath,
+                    filePath = outputPath,
+                    fileSize = fileSize,
+                    pageCount = pageContents.size
+                )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.e(e) { "Failed to generate PDF: ${e.message}" }
                 PdfResult.Error.Unknown("Failed to generate PDF: ${e.message}", e)
             }
         }
     }
+
+    private fun renderPage(
+        content: @Composable () -> Unit,
+        widthPx: Int,
+        heightPx: Int,
+        scale: Double
+    ): UIImage {
+        val scene = ImageComposeScene(
+            width = widthPx,
+            height = heightPx,
+            density = Density(scale.toFloat()),
+            content = content
+        )
+        try {
+            val image = scene.render()
+            try {
+                return image.toUIImage()
+            } finally {
+                image.close()
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    private fun outputPath(fileName: String): String {
+        // Get documents directory
+        val documentsPath = NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory,
+            NSUserDomainMask,
+            true
+        ).firstOrNull() as? String ?: throw IllegalStateException("Could not find documents directory")
+
+        val pdfDir = "$documentsPath/pdfs"
+        val fileManager = NSFileManager.defaultManager
+
+        // Create directory if needed
+        if (!fileManager.fileExistsAtPath(pdfDir)) {
+            fileManager.createDirectoryAtPath(
+                pdfDir,
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = null
+            )
+        }
+
+        return "$pdfDir/$fileName"
+    }
 }
 
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 private fun Image.toUIImage(): UIImage {
-    val bytes = this.encodeToData()?.bytes ?: throw Exception("Failed to encode image")
+    val bytes = this.encodeToData()?.bytes ?: throw IllegalStateException("Failed to encode image")
     val nsData = bytes.usePinned { pinned ->
         NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
     }
-    return UIImage.imageWithData(nsData) ?: throw Exception("Failed to create UIImage")
+    return UIImage.imageWithData(nsData) ?: throw IllegalStateException("Failed to create UIImage")
 }
