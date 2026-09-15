@@ -115,7 +115,8 @@ jobs:
         rm kmpdf/build.gradle.kts.bak
 
         # Update README.md
-        sed -i.bak "s/io.github.big-jared:kmpdf:[0-9.]\+/io.github.big-jared:kmpdf:$VERSION/" README.md
+        # Use ERE (-E): BSD sed on macOS runners doesn't support \+ in basic regexes
+        sed -i.bak -E "s/io\.github\.big-jared:kmpdf:[0-9]+(\.[0-9]+)*/io.github.big-jared:kmpdf:$VERSION/" README.md
         rm README.md.bak
 
         echo "Updated version to $VERSION in build.gradle.kts and README.md"
