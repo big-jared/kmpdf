@@ -169,23 +169,39 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
 
             logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
 
-            val pageBitmaps = try {
-                pageContents.mapIndexed { index, pageContent ->
+            val pdfDocument = PdfDocument()
+            try {
+                // Render and add one page at a time so only one page bitmap is in memory
+                pageContents.forEachIndexed { index, pageContent ->
                     logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
-                    renderPage(pageContent, widthPx, heightPx)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: PdfRenderingException) {
-                logger.e(e) { "PDF rendering failed: ${e.message}" }
-                return@withContext PdfResult.Error.RenderingFailed(
-                    e.message ?: "Failed to render PDF pages",
-                    e.cause
-                )
-            }
 
-            logger.logDebug { "All pages rendered, creating PDF" }
-            writePdf(context, config, pageBitmaps, widthPt, heightPt)
+                    val bitmap = try {
+                        renderPage(pageContent, widthPx, heightPx)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: PdfRenderingException) {
+                        logger.e(e) { "PDF rendering failed: ${e.message}" }
+                        return@withContext PdfResult.Error.RenderingFailed(
+                            e.message ?: "Failed to render PDF pages",
+                            e.cause
+                        )
+                    }
+
+                    try {
+                        addPage(pdfDocument, bitmap, index, widthPt, heightPt)
+                    } catch (e: Exception) {
+                        logger.e(e) { "Failed to add page ${index + 1}: ${e.message}" }
+                        return@withContext PdfResult.Error.IOError("Failed to create PDF: ${e.message}", e)
+                    } finally {
+                        bitmap.recycle()
+                    }
+                }
+
+                logger.logDebug { "All pages rendered, writing PDF" }
+                writePdf(context, config, pdfDocument, pageContents.size)
+            } finally {
+                pdfDocument.close()
+            }
         }
     }
 
@@ -277,38 +293,39 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
         }
     }
 
+    private fun addPage(
+        pdfDocument: PdfDocument,
+        bitmap: Bitmap,
+        index: Int,
+        widthPt: Int,
+        heightPt: Int
+    ) {
+        val pageInfo = PdfDocument.PageInfo.Builder(widthPt, heightPt, index + 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+
+        val scaleDown = 1f / RENDER_SCALE
+
+        page.canvas.save()
+        page.canvas.scale(scaleDown, scaleDown)
+        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+        page.canvas.restore()
+
+        pdfDocument.finishPage(page)
+    }
+
     private suspend fun writePdf(
         context: Context,
         config: PdfConfig,
-        pageBitmaps: List<Bitmap>,
-        widthPt: Int,
-        heightPt: Int
+        pdfDocument: PdfDocument,
+        pageCount: Int
     ): PdfResult = withContext(Dispatchers.IO) {
         try {
-            val pdfDocument = PdfDocument()
-
-            pageBitmaps.forEachIndexed { index, bitmap ->
-                val pageInfo = PdfDocument.PageInfo.Builder(widthPt, heightPt, index + 1).create()
-                val page = pdfDocument.startPage(pageInfo)
-
-                val scaleDown = 1f / RENDER_SCALE
-
-                page.canvas.save()
-                page.canvas.scale(scaleDown, scaleDown)
-                page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                page.canvas.restore()
-
-                pdfDocument.finishPage(page)
-                bitmap.recycle()
-            }
-
             val outputDir = File(context.cacheDir, "pdfs").apply { mkdirs() }
             val outputFile = File(outputDir, config.fileName)
 
             FileOutputStream(outputFile).use { outputStream ->
                 pdfDocument.writeTo(outputStream)
             }
-            pdfDocument.close()
             logger.logDebug { "PDF written to: ${outputFile.absolutePath}" }
 
             val fileSize = outputFile.length()
@@ -323,12 +340,12 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 outputFile.toURI().toString()
             }
 
-            logger.logInfo { "PDF generation successful: $uri (${pageBitmaps.size} pages, $fileSize bytes)" }
+            logger.logInfo { "PDF generation successful: $uri ($pageCount pages, $fileSize bytes)" }
             PdfResult.Success(
                 uri = uri,
                 filePath = outputFile.absolutePath,
                 fileSize = fileSize,
-                pageCount = pageBitmaps.size
+                pageCount = pageCount
             )
         } catch (e: CancellationException) {
             throw e

@@ -95,6 +95,11 @@ kotlin {
             implementation(libs.pdfbox)
             implementation(libs.kotlinx.coroutines.swing)
         }
+
+        jvmTest.dependencies {
+            // Skia native runtime, needed to render pages in tests
+            implementation(compose.desktop.currentOs)
+        }
     }
 }
 
