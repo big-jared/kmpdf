@@ -1,7 +1,10 @@
 package io.github.bigboyapps.kmpdf.sample
 
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalTime::class)
 actual fun getCurrentTimestamp(): String {
-    return Clock.System.now().toString()
+    // Colons aren't allowed in downloaded file names
+    return Clock.System.now().toString().substringBefore('.').replace(':', '-')
 }
