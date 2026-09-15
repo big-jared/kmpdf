@@ -100,6 +100,10 @@ kotlin {
             // Skia native runtime, needed to render pages in tests
             implementation(compose.desktop.currentOs)
         }
+
+        wasmJsMain.dependencies {
+            implementation(libs.kotlinx.browser)
+        }
     }
 }
 

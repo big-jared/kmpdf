@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.2.21-blue.svg?logo=kotlin)](http://kotlinlang.org)
 
-Generate PDF documents from Compose UI on Android, iOS, and Desktop.
+Generate PDF documents from Compose UI on Android, iOS, Desktop, and Web.
 
 ## Platform Support
 
@@ -13,7 +13,7 @@ Generate PDF documents from Compose UI on Android, iOS, and Desktop.
 | Android | ✅ Supported | API 26+ (Android 8.0+) |
 | iOS | ✅ Supported | iOS 14.0+ (iosArm64, iosX64, iosSimulatorArm64) |
 | Desktop (JVM) | ✅ Supported | JVM 17+ (macOS, Windows, Linux) |
-| WASM | 🚧 Planned | Coming soon |
+| Web (WASM) | ✅ Supported | Browsers with WebAssembly GC (Chrome 119+, Firefox 120+, Safari 18.2+) |
 
 ## Installation
 
@@ -175,6 +175,23 @@ No additional setup required.
 
 PDFs are saved to `~/Documents/pdfs/` by default. You can specify a custom output directory using the `outputDirectory` parameter in `PdfConfig`.
 
+### Web (WASM)
+
+No additional setup required. Browsers have no file system, so the PDF is kept in memory:
+
+- `result.uri` is a `blob:` URL and `result.filePath` is the file name from `PdfConfig`
+- `sharePdf(result.uri)` downloads the file, then frees it from memory about a minute later
+
+To keep the PDF around instead, the web target also provides:
+
+```kotlin
+downloadPdf(result.uri, fileName = "custom-name.pdf")  // Download without freeing it
+val bytes: ByteArray = readPdfBytes(result.uri)        // Read the PDF, e.g. to upload it
+releasePdf(result.uri)                                  // Free the memory when you're done
+```
+
+Each generated PDF stays in memory until `sharePdf` or `releasePdf` is called for it.
+
 ## Error Handling
 
 ```kotlin
@@ -196,6 +213,7 @@ when (result) {
 - Android: minSdk 26
 - iOS: iOS 14.0+
 - Desktop: JVM 17+
+- Web: a browser with WebAssembly GC support
 
 ## License
 

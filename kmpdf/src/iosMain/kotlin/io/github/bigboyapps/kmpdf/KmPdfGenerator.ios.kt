@@ -122,12 +122,17 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
 
                 val outputPath = outputPath(config.fileName)
+                // Pages go to a temporary file that replaces the output only once every page succeeds,
+                // so a failed render doesn't leave a partial PDF or overwrite an earlier one
+                val tempPath = "$outputPath.partial"
+                val fileManager = NSFileManager.defaultManager
                 val bounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
 
-                if (!UIGraphicsBeginPDFContextToFile(outputPath, bounds, null)) {
-                    return@withContext PdfResult.Error.IOError("Failed to create PDF file at $outputPath")
+                if (!UIGraphicsBeginPDFContextToFile(tempPath, bounds, null)) {
+                    return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
                 }
 
+                var allPagesWritten = false
                 try {
                     // Render and write one page at a time so only one page image is in memory
                     pageContents.forEachIndexed { index, pageContent ->
@@ -167,12 +172,22 @@ class IosKmPdfGenerator : KmPdfGenerator {
                         // Restore graphics state
                         CGContextRestoreGState(context)
                     }
+                    allPagesWritten = true
                 } finally {
                     UIGraphicsEndPDFContext()
+                    if (!allPagesWritten) {
+                        fileManager.removeItemAtPath(tempPath, error = null)
+                    }
+                }
+
+                fileManager.removeItemAtPath(outputPath, error = null)
+                if (!fileManager.moveItemAtPath(tempPath, toPath = outputPath, error = null)) {
+                    fileManager.removeItemAtPath(tempPath, error = null)
+                    return@withContext PdfResult.Error.IOError("Failed to move PDF into place at $outputPath")
                 }
 
                 // Get file size
-                val fileAttributes = NSFileManager.defaultManager.attributesOfItemAtPath(outputPath, error = null)
+                val fileAttributes = fileManager.attributesOfItemAtPath(outputPath, error = null)
                 val fileSize = (fileAttributes?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
 
                 logger.logInfo { "PDF generation successful: $outputPath (${pageContents.size} pages, $fileSize bytes)" }
