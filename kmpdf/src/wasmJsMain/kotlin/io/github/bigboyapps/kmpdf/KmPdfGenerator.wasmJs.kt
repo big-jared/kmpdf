@@ -13,9 +13,13 @@ import org.jetbrains.skia.ImageInfo
 import org.khronos.webgl.Int8Array
 import org.khronos.webgl.toByteArray
 import org.khronos.webgl.toInt8Array
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.js.Promise
 
 private val logger = Logger.withTag("KmPdfGenerator")
+
+/** How long a shared PDF stays available, so the browser can finish reading it for the download. */
+private const val SHARED_PDF_RELEASE_DELAY_MS = 60_000
 
 /** File names of PDFs generated in this page session, keyed by their blob URL. */
 private val fileNamesByUri = mutableMapOf<String, String>()
@@ -25,9 +29,15 @@ actual fun createKmPdfGenerator(): KmPdfGenerator = WasmKmPdfGenerator()
 /**
  * Browsers have no general share sheet for generated files, so this downloads the PDF
  * using the file name from [PdfConfig].
+ *
+ * Sharing hands the PDF off to the browser: its memory is freed shortly after the download starts,
+ * so [uri] can't be used afterwards. To keep the PDF, use [downloadPdf] or [readPdfBytes] instead
+ * and call [releasePdf] when you're done.
  */
 actual fun sharePdf(uri: String, title: String) {
     downloadPdf(uri)
+    fileNamesByUri.remove(uri)
+    revokeObjectUrlLater(uri, SHARED_PDF_RELEASE_DELAY_MS)
 }
 
 /**
@@ -112,6 +122,8 @@ class WasmKmPdfGenerator : KmPdfGenerator {
 
             val data = try {
                 if (compress) deflate(rgb.toInt8Array()).await<Int8Array>().toByteArray() else rgb
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 logger.e(e) { "Failed to compress page ${index + 1}: ${e.message}" }
                 return PdfResult.Error.IOError("Failed to compress page ${index + 1}: ${e.message}", e)
@@ -208,6 +220,9 @@ private external fun createPdfObjectUrl(bytes: Int8Array): String
 
 @JsFun("(url) => URL.revokeObjectURL(url)")
 private external fun revokeObjectUrl(url: String)
+
+@JsFun("(url, delayMs) => { setTimeout(() => URL.revokeObjectURL(url), delayMs); }")
+private external fun revokeObjectUrlLater(url: String, delayMs: Int)
 
 @JsFun(
     """(url, fileName) => {

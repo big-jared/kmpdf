@@ -250,7 +250,7 @@ expect fun createKmPdfGenerator(): KmPdfGenerator
  * **Android**: Opens an Android share intent with the PDF file.
  * **iOS**: Presents a UIActivityViewController with the PDF file.
  * **Desktop**: Opens the PDF in the default viewer.
- * **Web**: Downloads the PDF.
+ * **Web**: Downloads the PDF, then frees it from memory shortly after.
  *
  * @param uri The URI or file path of the PDF to share. This should be the URI returned
  *            from [PdfResult.Success].

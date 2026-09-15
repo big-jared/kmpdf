@@ -178,15 +178,17 @@ PDFs are saved to `~/Documents/pdfs/` by default. You can specify a custom outpu
 No additional setup required. Browsers have no file system, so the PDF is kept in memory:
 
 - `result.uri` is a `blob:` URL and `result.filePath` is the file name from `PdfConfig`
-- `sharePdf(result.uri)` downloads the file
+- `sharePdf(result.uri)` downloads the file, then frees it from memory about a minute later
 
-The web target also provides:
+To keep the PDF around instead, the web target also provides:
 
 ```kotlin
-downloadPdf(result.uri, fileName = "custom-name.pdf")  // Download under a different name
+downloadPdf(result.uri, fileName = "custom-name.pdf")  // Download without freeing it
 val bytes: ByteArray = readPdfBytes(result.uri)        // Read the PDF, e.g. to upload it
 releasePdf(result.uri)                                  // Free the memory when you're done
 ```
+
+Each generated PDF stays in memory until `sharePdf` or `releasePdf` is called for it.
 
 ## Error Handling
 
