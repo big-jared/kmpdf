@@ -175,8 +175,8 @@ sealed class PdfResult {
      *
      * @property uri The URI of the generated PDF file. On Android, this will be a content:// URI
      *               if FileProvider is configured, otherwise a file:// URI. On iOS, this will be
-     *               an absolute file path.
-     * @property filePath The absolute file path to the generated PDF.
+     *               an absolute file path. On Web, this will be a blob: URL.
+     * @property filePath The absolute file path to the generated PDF. On Web, this is the file name.
      * @property fileSize The size of the generated PDF file in bytes.
      * @property pageCount The number of pages in the generated PDF.
      */
@@ -249,6 +249,8 @@ expect fun createKmPdfGenerator(): KmPdfGenerator
  *
  * **Android**: Opens an Android share intent with the PDF file.
  * **iOS**: Presents a UIActivityViewController with the PDF file.
+ * **Desktop**: Opens the PDF in the default viewer.
+ * **Web**: Downloads the PDF.
  *
  * @param uri The URI or file path of the PDF to share. This should be the URI returned
  *            from [PdfResult.Success].

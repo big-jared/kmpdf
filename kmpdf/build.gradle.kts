@@ -95,6 +95,10 @@ kotlin {
             implementation(libs.pdfbox)
             implementation(libs.kotlinx.coroutines.swing)
         }
+
+        wasmJsMain.dependencies {
+            implementation(libs.kotlinx.browser)
+        }
     }
 }
 
