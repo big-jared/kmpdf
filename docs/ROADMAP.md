@@ -55,12 +55,16 @@ Shared validation rules, used by every platform's tests:
 **Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 13/13 contract tests, including three margin tests: every margin band is white with content starting at the margin edge, margin content matches the reference render and is clipped, and margins with no room for content fail without writing a file. `PdfMarginsTest` (presets, factories, validation) passes 5/5 on every platform. `apiCheck` only shows additions; the previous `PdfConfig` constructor and `copy` signatures are kept as hidden overloads, so apps built against 1.2.0 still link.
 
 ### 2. Content readiness (async content)
-- [ ] Before capturing a page, rendering waits until composition settles (no pending recompositions or effects) instead of capturing the first frame or waiting a fixed delay.
-- [ ] `PdfContentLoading(isLoading: Boolean)` lets page content hold rendering until data or images are ready, bounded by `PdfConfig(contentTimeout = ...)` (default 10 s).
-- [ ] Tests on every platform:
-  - Content that changes in a `LaunchedEffect` after a delay shows the updated state in the PDF.
-  - `PdfContentLoading(true)` that never clears returns `RenderingFailed` mentioning the timeout, within the timeout plus 2 s.
-  - Content that's ready immediately isn't slowed down by more than 500 ms per page.
+- [x] Before capturing a page, rendering keeps producing frames until composition settles (no pending recompositions), instead of capturing the first frame or waiting a fixed delay. Endlessly animating content never settles, so it's captured after at most 30 extra frames instead of hanging.
+- [x] `PdfContentLoading(isLoading: Boolean)` holds capture while page content loads data or images asynchronously, bounded by `PdfConfig(contentTimeout = ...)` (default 10 s). Outside PDF rendering it does nothing, so the same composable works on screen. (Work that finishes after an arbitrary delay can't be detected automatically, so it needs this signal.)
+- [x] Tests on every platform:
+  - State changed right after composition (in a `LaunchedEffect`) shows its updated value in the PDF.
+  - Content that loads for 500 ms behind `PdfContentLoading` shows its loaded state.
+  - `PdfContentLoading(true)` that never clears returns `RenderingFailed` mentioning the timeout, within the timeout plus 2 s, and leaves no file.
+  - An endlessly animating page still generates.
+  - A static page is captured without waiting for extra frames.
+
+**Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 18/18 contract tests, including the five readiness tests. Android uses a dedicated recomposer per page instead of fixed 200 ms and 100 ms delays. iOS now writes through a CoreGraphics PDF context, so suspending between pages never leaves UIKit's shared graphics context open. `apiCheck` shows only additions; the 1.2.0 `PdfConfig` signatures, including the no-argument constructor that adding a `Duration` property would otherwise remove, are kept as hidden overloads.
 
 ### 3. Wrap-content page height
 - [ ] `PageSize.wrapHeight(width)` (and a `WrapContent` height for individual pages) makes the page exactly as tall as its content plus the vertical margins.

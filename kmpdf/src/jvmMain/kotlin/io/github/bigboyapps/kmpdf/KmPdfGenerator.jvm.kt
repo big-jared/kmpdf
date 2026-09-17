@@ -1,7 +1,6 @@
 package io.github.bigboyapps.kmpdf
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
@@ -16,6 +15,7 @@ import org.jetbrains.skia.Image
 import java.awt.Desktop
 import java.awt.image.BufferedImage
 import java.io.File
+import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
@@ -79,7 +79,8 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
                                 content = { PageRoot(pageContent, config.margins) },
                                 width = pageWidthPx,
                                 height = pageHeightPx,
-                                density = Density(scale)
+                                density = Density(scale),
+                                contentTimeout = config.contentTimeout
                             )
                         } catch (e: CancellationException) {
                             throw e
@@ -145,25 +146,14 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
         content: @Composable () -> Unit,
         width: Int,
         height: Int,
-        density: Density
+        density: Density,
+        contentTimeout: Duration
     ): BufferedImage = withContext(Dispatchers.Main) {
-        // Use Compose's ImageComposeScene for rendering
-        val scene = ImageComposeScene(
-            width = width,
-            height = height,
-            density = density,
-            content = content
-        )
-
+        val image = renderPageImage(content, width, height, density, contentTimeout)
         try {
-            val image = scene.render()
-            try {
-                skiaImageToBufferedImage(image)
-            } finally {
-                image.close()
-            }
+            skiaImageToBufferedImage(image)
         } finally {
-            scene.close()
+            image.close()
         }
     }
 

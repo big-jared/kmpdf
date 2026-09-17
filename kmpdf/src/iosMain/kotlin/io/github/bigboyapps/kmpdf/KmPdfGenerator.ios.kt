@@ -1,7 +1,6 @@
 package io.github.bigboyapps.kmpdf
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -13,12 +12,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFURLRef
+import platform.CoreGraphics.CGContextBeginPage
 import platform.CoreGraphics.CGContextDrawImage
-import platform.CoreGraphics.CGContextRestoreGState
-import platform.CoreGraphics.CGContextSaveGState
-import platform.CoreGraphics.CGContextScaleCTM
-import platform.CoreGraphics.CGContextTranslateCTM
+import platform.CoreGraphics.CGContextEndPage
+import platform.CoreGraphics.CGContextRef
+import platform.CoreGraphics.CGContextRelease
+import platform.CoreGraphics.CGPDFContextClose
+import platform.CoreGraphics.CGPDFContextCreateWithURL
 import platform.CoreGraphics.CGRectMake
+import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
@@ -30,14 +34,11 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
-import platform.UIKit.UIGraphicsBeginPDFContextToFile
-import platform.UIKit.UIGraphicsBeginPDFPageWithInfo
-import platform.UIKit.UIGraphicsEndPDFContext
-import platform.UIKit.UIGraphicsGetCurrentContext
 import platform.UIKit.UIImage
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
 import platform.UIKit.popoverPresentationController
+import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
@@ -98,8 +99,8 @@ class IosKmPdfGenerator : KmPdfGenerator {
     ): PdfResult {
         logger.logDebug { "Starting PDF generation: ${config.fileName}" }
 
-        // Everything runs on the main thread: Compose rendering requires it, and the UIGraphics
-        // PDF context belongs to the thread that created it
+        // Compose rendering happens on the main thread. The PDF is written through a CoreGraphics
+        // context rather than UIKit's shared one, so waiting for content between pages is safe.
         return withContext(Dispatchers.Main) {
             try {
                 // Build pages
@@ -131,22 +132,25 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 // so a failed render doesn't leave a partial PDF or overwrite an earlier one
                 val tempPath = "$outputPath.partial"
                 val fileManager = NSFileManager.defaultManager
-                val bounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
 
-                if (!UIGraphicsBeginPDFContextToFile(tempPath, bounds, null)) {
-                    return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
-                }
+                val context = createPdfContext(tempPath, widthPt, heightPt)
+                    ?: return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
 
                 var allPagesWritten = false
                 try {
                     // Render and write one page at a time so only one page image is in memory
                     pageContents.forEachIndexed { index, pageContent ->
-                        // Generation runs without suspending, so check for cancellation explicitly
                         ensureActive()
                         logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                         val uiImage = try {
-                            renderPage({ PageRoot(pageContent, config.margins) }, widthPx, heightPx, scale)
+                            renderPage(
+                                { PageRoot(pageContent, config.margins) },
+                                widthPx,
+                                heightPx,
+                                scale,
+                                config.contentTimeout
+                            )
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -157,32 +161,17 @@ class IosKmPdfGenerator : KmPdfGenerator {
                             )
                         }
 
-                        UIGraphicsBeginPDFPageWithInfo(bounds, null)
-
-                        val context = UIGraphicsGetCurrentContext()
-                            ?: throw IllegalStateException("Failed to get graphics context")
-
-                        // Save graphics state
-                        CGContextSaveGState(context)
-
-                        uiImage.CGImage?.let { img ->
-                            // Flip coordinate system for image drawing
-                            // PDF origin is at bottom-left, images render top-to-bottom
-                            CGContextTranslateCTM(context, 0.0, heightPt)
-                            CGContextScaleCTM(context, 1.0, -1.0)
-
-                            // Draw the full page image
-                            val drawRect = CGRectMake(0.0, 0.0, widthPt, heightPt)
-                            CGContextDrawImage(context, drawRect, img)
-                        }
-
-                        // Restore graphics state
-                        CGContextRestoreGState(context)
+                        // CoreGraphics draws images upright with a bottom-left origin, matching PDF space
+                        val pageBounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
+                        CGContextBeginPage(context, pageBounds)
+                        CGContextDrawImage(context, pageBounds, uiImage.CGImage)
+                        CGContextEndPage(context)
                     }
                     ensureActive()
                     allPagesWritten = true
                 } finally {
-                    UIGraphicsEndPDFContext()
+                    CGPDFContextClose(context)
+                    CGContextRelease(context)
                     if (!allPagesWritten) {
                         fileManager.removeItemAtPath(tempPath, error = null)
                     }
@@ -214,27 +203,28 @@ class IosKmPdfGenerator : KmPdfGenerator {
         }
     }
 
-    private fun renderPage(
+    private fun createPdfContext(path: String, widthPt: Double, heightPt: Double): CGContextRef? {
+        @Suppress("UNCHECKED_CAST")
+        val url = CFBridgingRetain(NSURL.fileURLWithPath(path)) as CFURLRef
+        try {
+            return CGPDFContextCreateWithURL(url, CGRectMake(0.0, 0.0, widthPt, heightPt), null)
+        } finally {
+            CFRelease(url)
+        }
+    }
+
+    private suspend fun renderPage(
         content: @Composable () -> Unit,
         widthPx: Int,
         heightPx: Int,
-        scale: Double
+        scale: Double,
+        contentTimeout: Duration
     ): UIImage {
-        val scene = ImageComposeScene(
-            width = widthPx,
-            height = heightPx,
-            density = Density(scale.toFloat()),
-            content = content
-        )
+        val image = renderPageImage(content, widthPx, heightPx, Density(scale.toFloat()), contentTimeout)
         try {
-            val image = scene.render()
-            try {
-                return image.toUIImage()
-            } finally {
-                image.close()
-            }
+            return image.toUIImage()
         } finally {
-            scene.close()
+            image.close()
         }
     }
 

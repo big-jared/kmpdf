@@ -12,6 +12,8 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Recomposer
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -30,6 +32,8 @@ import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -37,18 +41,13 @@ import java.io.File
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
+import kotlin.time.Duration
 import android.graphics.Canvas as AndroidCanvas
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
 /** Supersampling factor applied while rasterizing each page for sharper output. */
 private const val RENDER_SCALE = 2f
-
-/** Delay (ms) after attaching a page so its composition can settle before measuring. */
-private const val COMPOSE_SETTLE_DELAY_MS = 200L
-
-/** Delay (ms) after layout so any follow-up recomposition is applied before drawing. */
-private const val DRAW_SETTLE_DELAY_MS = 100L
 
 /** How many times a single page render is retried when the host Activity is torn down mid-render. */
 private const val MAX_PAGE_RENDER_ATTEMPTS = 5
@@ -223,7 +222,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                     logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                     val bitmap = try {
-                        renderPage({ PageRoot(pageContent, config.margins) }, widthPx, heightPx)
+                        renderPage({ PageRoot(pageContent, config.margins) }, widthPx, heightPx, config.contentTimeout)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: PdfRenderingException) {
@@ -262,7 +261,8 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
     private suspend fun renderPage(
         pageContent: @Composable () -> Unit,
         widthPx: Int,
-        heightPx: Int
+        heightPx: Int,
+        contentTimeout: Duration
     ): Bitmap {
         var lastError: Throwable? = null
         repeat(MAX_PAGE_RENDER_ATTEMPTS) {
@@ -273,9 +273,11 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 return@repeat
             }
             try {
-                return renderPageOnActivity(activity, pageContent, widthPx, heightPx)
+                return renderPageOnActivity(activity, pageContent, widthPx, heightPx, contentTimeout)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: PdfContentTimeoutException) {
+                throw PdfRenderingException(e.message ?: "Page content didn't finish loading", e)
             } catch (e: Exception) {
                 if (!activity.wasTornDown()) {
                     // Failures that aren't caused by Activity recreation, like page content throwing,
@@ -299,16 +301,29 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
         activity: Activity,
         pageContent: @Composable () -> Unit,
         widthPx: Int,
-        heightPx: Int
+        heightPx: Int,
+        contentTimeout: Duration
     ): Bitmap {
         val parentView = activity.window.decorView.findViewById<ViewGroup>(android.R.id.content)
             ?: throw IllegalStateException("Host Activity has no content view")
 
+        // A recomposer just for this page, so pending work in the app's own UI (like an animation)
+        // doesn't keep the page from being ready
+        val recomposer = Recomposer(AndroidUiDispatcher.Main)
+        val recomposerJob = CoroutineScope(AndroidUiDispatcher.Main).launch {
+            recomposer.runRecomposeAndApplyChanges()
+        }
+        val tracker = PdfContentTracker()
+
         var composeView: ComposeView? = null
         try {
             composeView = ComposeView(activity).apply {
+                setParentCompositionContext(recomposer)
                 setContent {
-                    CompositionLocalProvider(LocalDensity provides Density(RENDER_SCALE)) {
+                    CompositionLocalProvider(
+                        LocalDensity provides Density(RENDER_SCALE),
+                        LocalPdfContentTracker provides tracker
+                    ) {
                         pageContent()
                     }
                 }
@@ -322,15 +337,16 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
 
             parentView.addView(composeView, FrameLayout.LayoutParams(widthPx, heightPx))
 
-            delay(COMPOSE_SETTLE_DELAY_MS)
-
-            composeView.measure(
-                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
-            )
-            composeView.layout(0, 0, widthPx, heightPx)
-
-            delay(DRAW_SETTLE_DELAY_MS)
+            val readiness = PageReadiness(contentTimeout)
+            do {
+                // Let effects, animations, and asynchronous loading make progress, then lay out again
+                delay(FRAME_DELAY_MS)
+                composeView.measure(
+                    View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
+                )
+                composeView.layout(0, 0, widthPx, heightPx)
+            } while (readiness.needsAnotherFrame(tracker.isLoading, recomposer.hasPendingWork))
 
             val bitmap = createBitmap(widthPx, heightPx)
             composeView.draw(AndroidCanvas(bitmap))
@@ -343,6 +359,8 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                     logger.logDebug { "Failed to detach render view: ${e.message}" }
                 }
             }
+            recomposer.cancel()
+            recomposerJob.cancel()
         }
     }
 

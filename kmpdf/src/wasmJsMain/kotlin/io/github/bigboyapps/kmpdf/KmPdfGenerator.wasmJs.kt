@@ -1,7 +1,6 @@
 package io.github.bigboyapps.kmpdf
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.await
@@ -15,6 +14,7 @@ import org.khronos.webgl.toByteArray
 import org.khronos.webgl.toInt8Array
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.js.Promise
+import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
@@ -118,7 +118,15 @@ class WasmKmPdfGenerator : KmPdfGenerator {
             logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
             val rgb = try {
-                renderPageToRgb({ PageRoot(pageContent, config.margins) }, pageWidthPx, pageHeightPx, Density(scale))
+                renderPageToRgb(
+                    { PageRoot(pageContent, config.margins) },
+                    pageWidthPx,
+                    pageHeightPx,
+                    Density(scale),
+                    config.contentTimeout
+                )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 logger.e(e) { "Failed to render page ${index + 1}: ${e.message}" }
                 return PdfResult.Error.RenderingFailed("Failed to render page ${index + 1}: ${e.message}", e)
@@ -154,23 +162,14 @@ class WasmKmPdfGenerator : KmPdfGenerator {
         }
     }
 
-    private fun renderPageToRgb(
+    private suspend fun renderPageToRgb(
         content: @Composable () -> Unit,
         width: Int,
         height: Int,
-        density: Density
+        density: Density,
+        contentTimeout: Duration
     ): ByteArray {
-        val scene = ImageComposeScene(
-            width = width,
-            height = height,
-            density = density,
-            content = content
-        )
-        val image = try {
-            scene.render()
-        } finally {
-            scene.close()
-        }
+        val image = renderPageImage(content, width, height, density, contentTimeout)
 
         return try {
             image.toRgbOnWhite()

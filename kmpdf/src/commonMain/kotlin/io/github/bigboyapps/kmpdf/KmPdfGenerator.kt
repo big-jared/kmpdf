@@ -5,6 +5,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Controls the logging behavior of KmPDF.
@@ -161,20 +163,31 @@ data class PdfMargins(
  *                          Ignored on Android and iOS which use platform-specific directories.
  * @property margins Space between the page edges and the content. Defaults to [PdfMargins.None].
  *                   Margins that leave no room for content make generation return an error.
+ * @property contentTimeout How long to wait for page content that reports [PdfContentLoading] before
+ *                          generation fails with [PdfResult.Error.RenderingFailed]. Defaults to 10 seconds.
  */
 data class PdfConfig(
     val pageSize: PageSize = PageSize.A4,
     val fileName: String = "document.pdf",
     val outputDirectory: String? = null,
-    val margins: PdfMargins = PdfMargins.None
+    val margins: PdfMargins = PdfMargins.None,
+    val contentTimeout: Duration = 10.seconds
 ) {
+    init {
+        require(contentTimeout.isPositive()) { "contentTimeout must be positive, got $contentTimeout" }
+    }
+
+    /** Keeps Java callers and apps compiled against KmPDF 1.2.0 and earlier working. */
+    @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
+    constructor() : this(PageSize.A4, "document.pdf", null, PdfMargins.None, 10.seconds)
+
     /** Keeps apps compiled against KmPDF 1.2.0 and earlier working. */
     @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
     constructor(
         pageSize: PageSize = PageSize.A4,
         fileName: String = "document.pdf",
         outputDirectory: String? = null
-    ) : this(pageSize, fileName, outputDirectory, PdfMargins.None)
+    ) : this(pageSize, fileName, outputDirectory, PdfMargins.None, 10.seconds)
 
     /** Keeps apps compiled against KmPDF 1.2.0 and earlier working. */
     @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
@@ -182,7 +195,7 @@ data class PdfConfig(
         pageSize: PageSize = this.pageSize,
         fileName: String = this.fileName,
         outputDirectory: String? = this.outputDirectory
-    ): PdfConfig = PdfConfig(pageSize, fileName, outputDirectory, margins)
+    ): PdfConfig = PdfConfig(pageSize, fileName, outputDirectory, margins, contentTimeout)
 }
 
 /**

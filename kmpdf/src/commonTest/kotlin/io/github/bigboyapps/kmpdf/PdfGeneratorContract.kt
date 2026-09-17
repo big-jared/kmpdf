@@ -1,10 +1,19 @@
 package io.github.bigboyapps.kmpdf
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
@@ -24,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestResult
 import kotlin.math.abs
@@ -33,6 +43,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** A generated PDF read back with the platform's own PDF engine. */
 class ReadBackDocument(
@@ -293,6 +306,81 @@ abstract class PdfGeneratorContract {
         assertIs<PdfResult.Error>(result, "Expected an error for margins wider than the page, got $result")
         assertTrue(result.message.contains("Margins"), "Error should explain the margins problem: ${result.message}")
         assertFalse(outputExists("contract-no-room.pdf"))
+    }
+
+    private fun assertColorAt(page: RgbaImage, x: Int, y: Int, expected: Rgb, what: String) {
+        val actual = page.pixel(x, y)
+        assertTrue(actual.distanceTo(expected) <= COLOR_TOLERANCE, "$what at ($x, $y) should be $expected but was $actual")
+    }
+
+    @Test
+    fun stateChangedRightAfterCompositionIsCaptured() = runPdfTest {
+        val result = generateSuccessfully("contract-effect.pdf") {
+            page {
+                var ready by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { ready = true }
+                Box(Modifier.fillMaxSize().background(if (ready) Color.Green else Color.Red))
+            }
+        }
+        val page = readBack(result).pages.single()
+
+        assertColorAt(page, page.width / 2, page.height / 2, Rgb(0, 255, 0), "Page updated in a LaunchedEffect")
+    }
+
+    @Test
+    fun loadingContentIsWaitedFor() = runPdfTest {
+        val result = generateSuccessfully("contract-loading.pdf") {
+            page {
+                var loaded by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    delay(500.milliseconds)
+                    loaded = true
+                }
+                PdfContentLoading(isLoading = !loaded)
+                Box(Modifier.fillMaxSize().background(if (loaded) Color.Green else Color.Red))
+            }
+        }
+        val page = readBack(result).pages.single()
+
+        assertColorAt(page, page.width / 2, page.height / 2, Rgb(0, 255, 0), "Page that loads for 500 ms")
+    }
+
+    @Test
+    fun loadingThatNeverFinishesTimesOut() = runPdfTest {
+        val timeout = 1.seconds
+        val start = TimeSource.Monotonic.markNow()
+        val result = createGenerator().generatePdf(config("contract-timeout.pdf").copy(contentTimeout = timeout)) {
+            page {
+                PdfContentLoading(isLoading = true)
+                MarkerPage(PageMarkerColors[0])
+            }
+        }
+        val elapsed = start.elapsedNow()
+
+        assertIs<PdfResult.Error.RenderingFailed>(result, "Expected a timeout, got $result")
+        assertTrue(result.message.contains("PdfContentLoading"), "Error should mention the loading timeout: ${result.message}")
+        assertTrue(elapsed < timeout + 2.seconds, "Should fail soon after the ${timeout} timeout, took $elapsed")
+        assertFalse(outputExists("contract-timeout.pdf"))
+    }
+
+    @Test
+    fun endlessAnimationStillGenerates() = runPdfTest {
+        val result = generateSuccessfully("contract-animation.pdf") {
+            page {
+                val transition = rememberInfiniteTransition()
+                val alpha by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1000)))
+                Box(Modifier.fillMaxSize().background(Color.Blue.copy(alpha = alpha)))
+            }
+        }
+
+        assertEquals(1, result.pageCount)
+    }
+
+    @Test
+    fun staticPageNeedsNoExtraFrames() = runPdfTest {
+        generateSuccessfully("contract-static.pdf") { page { DetailedContent() } }
+
+        assertEquals(0, PdfRenderDiagnostics.lastPageExtraFrames, "A static page shouldn't wait for extra frames")
     }
 
     @Test
