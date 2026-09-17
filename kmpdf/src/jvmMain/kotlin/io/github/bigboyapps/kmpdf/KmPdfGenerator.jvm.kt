@@ -15,6 +15,7 @@ import org.jetbrains.skia.Image
 import java.awt.Desktop
 import java.awt.image.BufferedImage
 import java.io.File
+import java.net.URI
 import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
@@ -30,6 +31,11 @@ actual fun sharePdf(uri: String, title: String) {
     } catch (e: Exception) {
         logger.e(e) { "Failed to open PDF: ${e.message}" }
     }
+}
+
+actual suspend fun readPdfBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+    val file = if (uri.startsWith("file:")) File(URI(uri)) else File(uri)
+    file.readBytes()
 }
 
 class DesktopKmPdfGenerator : KmPdfGenerator {

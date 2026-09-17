@@ -38,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
@@ -146,6 +147,18 @@ actual fun sharePdf(uri: String, title: String) {
         activity.startActivity(Intent.createChooser(shareIntent, title))
     } catch (e: Exception) {
         e.printStackTrace()
+    }
+}
+
+actual suspend fun readPdfBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+    // FileProvider gives content:// URIs; without one, generated PDFs have file: URIs like file:/data/...
+    if (uri.startsWith("content:") || uri.startsWith("file:")) {
+        val context = applicationContext
+            ?: throw IllegalStateException("KmPdfGenerator not initialized. Call initKmPdfGenerator(context) first.")
+        context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+            ?: throw FileNotFoundException("Couldn't open $uri")
+    } else {
+        File(uri).readBytes()
     }
 }
 

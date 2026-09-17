@@ -88,6 +88,12 @@ abstract class PdfGeneratorContract {
     /** Whether a PDF with [fileName] exists where the generator writes its output. */
     protected abstract fun outputExists(fileName: String): Boolean
 
+    /** Counts the pages in [bytes] with the platform's own PDF engine. */
+    protected abstract suspend fun pageCountOf(bytes: ByteArray): Int
+
+    /** A URI that [readPdfBytes] can't read on this platform. */
+    protected open val missingPdfUri: String = "/kmpdf-missing/does-not-exist.pdf"
+
     /** The page size, in points, the platform is expected to produce for a requested size. */
     protected open fun expectedPageSizePt(width: Float, height: Float): Pair<Float, Float> = width to height
 
@@ -571,6 +577,27 @@ abstract class PdfGeneratorContract {
         assertIs<PdfResult.Error.RenderingFailed>(result, "Expected an oversized item to fail, got $result")
         assertTrue(result.message.contains("Item 2"), "Error should name the item: ${result.message}")
         assertFalse(outputExists("contract-item-too-tall.pdf"))
+    }
+
+    @Test
+    fun readPdfBytesReturnsTheGeneratedPdf() = runPdfTest {
+        val result = generateSuccessfully("contract-bytes.pdf") {
+            page { MarkerPage(PageMarkerColors[0]) }
+            page { MarkerPage(PageMarkerColors[1]) }
+        }
+
+        val bytes = readPdfBytes(result.uri)
+
+        assertEquals(result.fileSize, bytes.size.toLong(), "Byte count should match fileSize")
+        assertEquals("%PDF-", bytes.copyOfRange(0, 5).decodeToString())
+        assertEquals(2, pageCountOf(bytes), "The bytes should open as a 2-page PDF")
+    }
+
+    @Test
+    fun readPdfBytesFailsForAMissingPdf() = runPdfTest {
+        val outcome = runCatching { readPdfBytes(missingPdfUri) }
+
+        assertTrue(outcome.isFailure, "Reading a missing PDF should fail, but returned ${outcome.getOrNull()?.size} bytes")
     }
 
     @Test

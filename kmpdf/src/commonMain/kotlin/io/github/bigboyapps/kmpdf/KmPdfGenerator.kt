@@ -413,3 +413,15 @@ expect fun createKmPdfGenerator(): KmPdfGenerator
  * @param title The title to display in the share sheet. Defaults to "Share PDF".
  */
 expect fun sharePdf(uri: String, title: String = "Share PDF")
+
+/**
+ * Reads the bytes of a generated PDF, for example to upload it or store it somewhere else.
+ *
+ * **Android**: Reads the content:// or file: URI, or file path, returned in [PdfResult.Success.uri].
+ * **iOS** and **Desktop**: Reads the file at the returned path.
+ * **Web**: Reads the blob: URL. Call it before [sharePdf] frees the PDF.
+ *
+ * @param uri The URI or file path returned in [PdfResult.Success.uri].
+ * @throws Exception when the PDF can't be read, for example because it no longer exists.
+ */
+expect suspend fun readPdfBytes(uri: String): ByteArray

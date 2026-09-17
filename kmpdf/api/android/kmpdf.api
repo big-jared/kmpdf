@@ -16,6 +16,7 @@ public final class io/github/bigboyapps/kmpdf/KmPdfGenerator$DefaultImpls {
 public final class io/github/bigboyapps/kmpdf/KmPdfGenerator_androidKt {
 	public static final fun createKmPdfGenerator ()Lio/github/bigboyapps/kmpdf/KmPdfGenerator;
 	public static final fun initKmPdfGenerator (Landroid/content/Context;)V
+	public static final fun readPdfBytes (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static final fun sharePdf (Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun sharePdf$default (Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 }

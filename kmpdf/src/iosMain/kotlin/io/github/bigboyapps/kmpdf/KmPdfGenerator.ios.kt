@@ -9,6 +9,7 @@ import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
@@ -32,6 +33,8 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
+import platform.Foundation.dataWithContentsOfFile
+import platform.posix.memcpy
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIImage
@@ -72,6 +75,17 @@ actual fun sharePdf(uri: String, title: String) {
         animated = true,
         completion = null
     )
+}
+
+@OptIn(ExperimentalForeignApi::class)
+actual suspend fun readPdfBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+    val path = if (uri.startsWith("file:")) NSURL.URLWithString(uri)?.path ?: uri else uri
+    val data = NSData.dataWithContentsOfFile(path) ?: throw IllegalStateException("Couldn't read the PDF at $uri")
+    ByteArray(data.length.toInt()).also { bytes ->
+        if (bytes.isNotEmpty()) {
+            bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+        }
+    }
 }
 
 /**

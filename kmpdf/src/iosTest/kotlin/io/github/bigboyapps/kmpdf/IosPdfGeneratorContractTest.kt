@@ -5,6 +5,8 @@ import io.github.bigboyapps.kmpdf.testing.RgbaImage
 import io.github.bigboyapps.kmpdf.testing.renderWithImageComposeScene
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.useContents
@@ -14,9 +16,13 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.withContext
+import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFURLRef
 import platform.CoreGraphics.CGBitmapContextCreate
+import platform.CoreGraphics.CGDataProviderCreateWithCFData
+import platform.CoreGraphics.CGDataProviderRelease
+import platform.CoreGraphics.CGPDFDocumentCreateWithProvider
 import platform.CoreGraphics.CGBitmapContextGetData
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
@@ -34,6 +40,7 @@ import platform.CoreGraphics.CGPDFPageGetBoxRect
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.kCGPDFMediaBox
 import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSData
 import platform.Foundation.NSDate
 import platform.Foundation.NSDefaultRunLoopMode
 import platform.Foundation.NSDocumentDirectory
@@ -43,6 +50,7 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dateWithTimeIntervalSinceNow
+import platform.Foundation.create
 import platform.Foundation.runMode
 import kotlin.concurrent.AtomicReference
 import kotlin.math.floor
@@ -144,4 +152,21 @@ class IosPdfGeneratorContractTest : PdfGeneratorContract() {
 
     override fun outputExists(fileName: String): Boolean =
         NSFileManager.defaultManager.fileExistsAtPath("$pdfDirectory/$fileName")
+
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
+    override suspend fun pageCountOf(bytes: ByteArray): Int {
+        val data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }
+        @Suppress("UNCHECKED_CAST")
+        val cfData = CFBridgingRetain(data) as CFDataRef
+        val provider = checkNotNull(CGDataProviderCreateWithCFData(cfData)) { "Couldn't create a data provider" }
+        val document = CGPDFDocumentCreateWithProvider(provider)
+        try {
+            return checkNotNull(document) { "CoreGraphics couldn't open the PDF bytes" }
+                .let { CGPDFDocumentGetNumberOfPages(it).toInt() }
+        } finally {
+            CGPDFDocumentRelease(document)
+            CGDataProviderRelease(provider)
+            CFRelease(cfData)
+        }
+    }
 }

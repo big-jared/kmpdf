@@ -56,4 +56,6 @@ class JvmPdfGeneratorContractTest : PdfGeneratorContract() {
         }
 
     override fun outputExists(fileName: String): Boolean = File(outputDir, fileName).exists()
+
+    override suspend fun pageCountOf(bytes: ByteArray): Int = Loader.loadPDF(bytes).use { it.numberOfPages }
 }

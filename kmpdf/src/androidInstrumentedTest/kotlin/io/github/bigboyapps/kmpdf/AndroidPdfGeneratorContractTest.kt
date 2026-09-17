@@ -130,6 +130,19 @@ class AndroidPdfGeneratorContractTest : PdfGeneratorContract() {
 
     override fun outputExists(fileName: String): Boolean = File(pdfDirectory, fileName).exists()
 
+    override suspend fun pageCountOf(bytes: ByteArray): Int = withContext(Dispatchers.IO) {
+        // PdfRenderer only reads from a file descriptor
+        val file = File.createTempFile("contract-bytes", ".pdf", context.cacheDir)
+        try {
+            file.writeBytes(bytes)
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { it.pageCount }
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
     private fun Bitmap.toRgbaImage(): RgbaImage {
         val argb = IntArray(width * height)
         getPixels(argb, 0, width, 0, 0, width, height)

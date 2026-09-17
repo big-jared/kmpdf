@@ -83,8 +83,10 @@ Shared validation rules, used by every platform's tests:
 **Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 28/28 contract tests, plus `PagePackingTest` (10/10) and `PagePlanningTest` (7/7) on every platform. The render test flows 100 items of varying heights across Letter pages with Narrow margins, a header, and a footer, then reads each page back to check its first and last item (color-coded by index) and its footer's page number and page count against the packing. `LocalPdfPageInfo` is checked on single and flowing pages. The first Android run misread an item index because the test's colors were only 2 steps apart; the encoding now keeps neighboring items at least 10 apart, and all four platforms pass. `apiCheck` shows only additions.
 
 ### 5. `readPdfBytes` on every platform
-- [ ] A common `suspend fun readPdfBytes(uri: String): ByteArray` (content/file URI on Android, file path on iOS and Desktop, blob URL on web).
-- [ ] Tests on every platform: the returned size equals `fileSize`, the bytes start with `%PDF-`, and the bytes parse with the platform's PDF engine.
+- [x] A common `suspend fun readPdfBytes(uri: String): ByteArray` (content/file URI on Android, file path on iOS and Desktop, blob URL on web).
+- [x] Tests on every platform: the returned size equals `fileSize`, the bytes start with `%PDF-`, and the bytes parse with the platform's PDF engine.
+
+**Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 30/30 contract tests. For a 2-page PDF, `readPdfBytes(result.uri)` returns exactly `fileSize` bytes starting with `%PDF-`, and the platform's own engine (PDFBox, CoreGraphics, `PdfRenderer`, or the strict structure reader on web) opens them as 2 pages. Reading a missing PDF fails on every platform. On web, a failed fetch used to return the error page's bytes; it now fails. On Android, `file:` URIs like `file:/data/...` (used when no FileProvider is configured) are read correctly. `apiCheck` shows only the addition.
 
 ### 6. PDF metadata
 - [ ] `PdfConfig(metadata = PdfMetadata(title, author, subject, keywords, creator))`, with the producer set to `KmPDF <version>`.

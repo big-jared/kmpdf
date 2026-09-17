@@ -57,6 +57,8 @@ class WasmPdfGeneratorContractTest : PdfGeneratorContract() {
 
     // Browsers have no file system; generated PDFs only exist as blob URLs
     override fun outputExists(fileName: String): Boolean = false
+
+    override suspend fun pageCountOf(bytes: ByteArray): Int = PdfStructure.parse(bytes).pages.size
 }
 
 @JsFun(
