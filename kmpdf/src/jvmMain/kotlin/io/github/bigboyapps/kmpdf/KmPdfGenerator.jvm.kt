@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.pdmodel.PDDocumentInformation
 import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
@@ -75,6 +76,14 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
             // Create PDF
             withContext(Dispatchers.IO) {
                 val document = PDDocument()
+                document.documentInformation = PDDocumentInformation().apply {
+                    config.metadata.title?.let { title = it }
+                    config.metadata.author?.let { author = it }
+                    config.metadata.subject?.let { subject = it }
+                    config.metadata.keywords?.let { keywords = it }
+                    config.metadata.creator?.let { creator = it }
+                    producer = KMPDF_PRODUCER
+                }
 
                 try {
                     // Render each page

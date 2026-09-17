@@ -89,9 +89,12 @@ Shared validation rules, used by every platform's tests:
 **Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 30/30 contract tests. For a 2-page PDF, `readPdfBytes(result.uri)` returns exactly `fileSize` bytes starting with `%PDF-`, and the platform's own engine (PDFBox, CoreGraphics, `PdfRenderer`, or the strict structure reader on web) opens them as 2 pages. Reading a missing PDF fails on every platform. On web, a failed fetch used to return the error page's bytes; it now fails. On Android, `file:` URIs like `file:/data/...` (used when no FileProvider is configured) are read correctly. `apiCheck` shows only the addition.
 
 ### 6. PDF metadata
-- [ ] `PdfConfig(metadata = PdfMetadata(title, author, subject, keywords, creator))`, with the producer set to `KmPDF <version>`.
-- [ ] Written natively on iOS, Desktop, and Web. Android's `PdfDocument` has no metadata API, so Android appends a standards-compliant incremental update with an Info dictionary.
-- [ ] Tests on every platform read the metadata back (PDFBox, `CGPDFDocumentGetInfo`, the shared structure reader). Android output is also opened with `PdfRenderer` after the incremental update, to prove the file is still valid.
+- [x] `PdfConfig(metadata = PdfMetadata(title, author, subject, keywords, creator))`. The producer is `KmPDF <version>`, taken from the build's library version so it can't drift from releases. On iOS, CoreGraphics always writes its own producer and offers no way to change it, so iOS writes every field except the producer.
+- [x] Written natively on iOS, Desktop, and Web. Android's `PdfDocument` has no metadata API, so Android appends a standards-compliant incremental update with an Info dictionary.
+- [x] Non-ASCII text (accents, symbols, CJK) and characters that need escaping (parentheses, backslashes) round-trip exactly.
+- [x] Tests on every platform read the metadata back (PDFBox, `CGPDFDocumentGetInfo`, the shared structure reader). Android output is also opened with `PdfRenderer` after the incremental update, to prove the file is still valid.
+
+**Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 31/31 contract tests. The metadata test writes a title with an en dash, a check mark, and accents, plus an author with parentheses and a backslash, then reads every field back with PDFBox, `CGPDFDocumentGetInfo`, or the strict structure reader. On Android that also validates the appended update's cross-reference table, and `PdfRenderer` still opens both pages. `PdfInfoTest` (5/5) checks the incremental update against PDFBox-written files, including updating twice, and checks the web writer's Info dictionary. `apiCheck` shows only additions; the removed signatures were unreleased ones added earlier in this batch, and every 1.2.0 signature is kept.
 
 ## Final checks
 

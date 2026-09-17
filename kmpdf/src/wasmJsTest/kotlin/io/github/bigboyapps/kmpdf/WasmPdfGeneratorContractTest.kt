@@ -59,6 +59,9 @@ class WasmPdfGeneratorContractTest : PdfGeneratorContract() {
     override fun outputExists(fileName: String): Boolean = false
 
     override suspend fun pageCountOf(bytes: ByteArray): Int = PdfStructure.parse(bytes).pages.size
+
+    override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
+        PdfStructure.parse(readPdfBytes(result.uri)).info
 }
 
 @JsFun(

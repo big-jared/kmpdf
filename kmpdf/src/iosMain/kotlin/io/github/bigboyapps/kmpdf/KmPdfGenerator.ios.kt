@@ -13,7 +13,10 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
+import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFRetain
+import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.CFURLRef
 import platform.CoreGraphics.CGContextBeginPage
 import platform.CoreGraphics.CGContextDrawImage
@@ -23,11 +26,19 @@ import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGPDFContextClose
 import platform.CoreGraphics.CGPDFContextCreateWithURL
 import platform.CoreGraphics.CGRectMake
+import platform.CoreGraphics.kCGPDFContextAuthor
+import platform.CoreGraphics.kCGPDFContextCreator
+import platform.CoreGraphics.kCGPDFContextKeywords
+import platform.CoreGraphics.kCGPDFContextSubject
+import platform.CoreGraphics.kCGPDFContextTitle
+import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
+import platform.Foundation.NSMutableDictionary
+import platform.Foundation.NSString
 import platform.Foundation.NSNumber
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
@@ -148,7 +159,12 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 val fileManager = NSFileManager.defaultManager
 
                 val firstPage = plannedPages.first()
-                val context = createPdfContext(tempPath, firstPage.widthPt.toDouble(), firstPage.heightPt.toDouble())
+                val context = createPdfContext(
+                    tempPath,
+                    firstPage.widthPt.toDouble(),
+                    firstPage.heightPt.toDouble(),
+                    config.metadata
+                )
                     ?: return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
 
                 var allPagesWritten = false
@@ -218,15 +234,29 @@ class IosKmPdfGenerator : KmPdfGenerator {
         }
     }
 
-    private fun createPdfContext(path: String, widthPt: Double, heightPt: Double): CGContextRef? {
+    private fun createPdfContext(path: String, widthPt: Double, heightPt: Double, metadata: PdfMetadata): CGContextRef? {
+        // CoreGraphics always writes its own producer, so only these fields can be set
+        val info = NSMutableDictionary()
+        metadata.title?.let { info.setObject(it, forKey = bridgedKey(kCGPDFContextTitle)) }
+        metadata.author?.let { info.setObject(it, forKey = bridgedKey(kCGPDFContextAuthor)) }
+        metadata.subject?.let { info.setObject(it, forKey = bridgedKey(kCGPDFContextSubject)) }
+        metadata.keywords?.let { info.setObject(it, forKey = bridgedKey(kCGPDFContextKeywords)) }
+        metadata.creator?.let { info.setObject(it, forKey = bridgedKey(kCGPDFContextCreator)) }
+
         @Suppress("UNCHECKED_CAST")
         val url = CFBridgingRetain(NSURL.fileURLWithPath(path)) as CFURLRef
+        @Suppress("UNCHECKED_CAST")
+        val auxiliaryInfo = CFBridgingRetain(info) as CFDictionaryRef
         try {
-            return CGPDFContextCreateWithURL(url, CGRectMake(0.0, 0.0, widthPt, heightPt), null)
+            return CGPDFContextCreateWithURL(url, CGRectMake(0.0, 0.0, widthPt, heightPt), auxiliaryInfo)
         } finally {
             CFRelease(url)
+            CFRelease(auxiliaryInfo)
         }
     }
+
+    /** A CoreGraphics dictionary key as an NSString, retained so bridging doesn't release the constant. */
+    private fun bridgedKey(key: CFStringRef?): NSString = CFBridgingRelease(CFRetain(key)) as NSString
 
     private suspend fun renderPage(
         content: @Composable () -> Unit,

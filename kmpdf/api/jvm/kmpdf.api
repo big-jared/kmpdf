@@ -57,21 +57,23 @@ public final class io/github/bigboyapps/kmpdf/PdfConfig {
 	public synthetic fun <init> ()V
 	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JLio/github/bigboyapps/kmpdf/PdfMetadata;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JLio/github/bigboyapps/kmpdf/PdfMetadata;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lio/github/bigboyapps/kmpdf/PageSize;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Lio/github/bigboyapps/kmpdf/PdfMargins;
 	public final fun component5-UwyO8pc ()J
+	public final fun component6 ()Lio/github/bigboyapps/kmpdf/PdfMetadata;
 	public final synthetic fun copy (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;)Lio/github/bigboyapps/kmpdf/PdfConfig;
 	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfConfig;Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfConfig;
-	public final fun copy-9VgGkz4 (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;J)Lio/github/bigboyapps/kmpdf/PdfConfig;
-	public static synthetic fun copy-9VgGkz4$default (Lio/github/bigboyapps/kmpdf/PdfConfig;Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfConfig;
+	public final fun copy-myKFqkg (Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JLio/github/bigboyapps/kmpdf/PdfMetadata;)Lio/github/bigboyapps/kmpdf/PdfConfig;
+	public static synthetic fun copy-myKFqkg$default (Lio/github/bigboyapps/kmpdf/PdfConfig;Lio/github/bigboyapps/kmpdf/PageSize;Ljava/lang/String;Ljava/lang/String;Lio/github/bigboyapps/kmpdf/PdfMargins;JLio/github/bigboyapps/kmpdf/PdfMetadata;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getContentTimeout-UwyO8pc ()J
 	public final fun getFileName ()Ljava/lang/String;
 	public final fun getMargins ()Lio/github/bigboyapps/kmpdf/PdfMargins;
+	public final fun getMetadata ()Lio/github/bigboyapps/kmpdf/PdfMetadata;
 	public final fun getOutputDirectory ()Ljava/lang/String;
 	public final fun getPageSize ()Lio/github/bigboyapps/kmpdf/PageSize;
 	public fun hashCode ()I
@@ -110,6 +112,28 @@ public final class io/github/bigboyapps/kmpdf/PdfMargins$Companion {
 	public final fun getWide ()Lio/github/bigboyapps/kmpdf/PdfMargins;
 	public final fun symmetric-YgX7TsA (FF)Lio/github/bigboyapps/kmpdf/PdfMargins;
 	public static synthetic fun symmetric-YgX7TsA$default (Lio/github/bigboyapps/kmpdf/PdfMargins$Companion;FFILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfMargins;
+}
+
+public final class io/github/bigboyapps/kmpdf/PdfMetadata {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/github/bigboyapps/kmpdf/PdfMetadata;
+	public static synthetic fun copy$default (Lio/github/bigboyapps/kmpdf/PdfMetadata;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/bigboyapps/kmpdf/PdfMetadata;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAuthor ()Ljava/lang/String;
+	public final fun getCreator ()Ljava/lang/String;
+	public final fun getKeywords ()Ljava/lang/String;
+	public final fun getSubject ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/bigboyapps/kmpdf/PdfPageInfo {

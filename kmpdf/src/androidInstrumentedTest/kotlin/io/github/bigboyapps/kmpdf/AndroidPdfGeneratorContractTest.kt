@@ -18,6 +18,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.bigboyapps.kmpdf.testing.PdfStructure
 import io.github.bigboyapps.kmpdf.testing.RgbaImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,6 +130,10 @@ class AndroidPdfGeneratorContractTest : PdfGeneratorContract() {
     }
 
     override fun outputExists(fileName: String): Boolean = File(pdfDirectory, fileName).exists()
+
+    // The strict reader validates the appended update's cross-reference table and offsets
+    override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
+        PdfStructure.parse(readPdfBytes(result.uri)).info
 
     override suspend fun pageCountOf(bytes: ByteArray): Int = withContext(Dispatchers.IO) {
         // PdfRenderer only reads from a file descriptor

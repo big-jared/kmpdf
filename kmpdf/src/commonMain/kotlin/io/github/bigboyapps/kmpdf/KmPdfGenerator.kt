@@ -233,6 +233,26 @@ data class PdfMargins(
 }
 
 /**
+ * Document information written into the PDF, shown by PDF viewers in the document's properties.
+ *
+ * Every generated PDF also records KmPDF as its producer, except on iOS, where CoreGraphics always writes
+ * its own producer.
+ *
+ * @property title The document title.
+ * @property author The person or organization that created the document.
+ * @property subject What the document is about.
+ * @property keywords Keywords describing the document, for example "invoice, 2026".
+ * @property creator The app that created the document.
+ */
+data class PdfMetadata(
+    val title: String? = null,
+    val author: String? = null,
+    val subject: String? = null,
+    val keywords: String? = null,
+    val creator: String? = null
+)
+
+/**
  * Configuration for PDF generation.
  *
  * @property pageSize The size of each page in the PDF, unless a page sets its own. Defaults to A4.
@@ -245,13 +265,15 @@ data class PdfMargins(
  *                   Margins that leave no room for content make generation return an error.
  * @property contentTimeout How long to wait for page content that reports [PdfContentLoading] before
  *                          generation fails with [PdfResult.Error.RenderingFailed]. Defaults to 10 seconds.
+ * @property metadata Document information such as the title and author. Defaults to none.
  */
 data class PdfConfig(
     val pageSize: PageSize = PageSize.A4,
     val fileName: String = "document.pdf",
     val outputDirectory: String? = null,
     val margins: PdfMargins = PdfMargins.None,
-    val contentTimeout: Duration = 10.seconds
+    val contentTimeout: Duration = 10.seconds,
+    val metadata: PdfMetadata = PdfMetadata()
 ) {
     init {
         require(contentTimeout.isPositive()) { "contentTimeout must be positive, got $contentTimeout" }
@@ -259,7 +281,7 @@ data class PdfConfig(
 
     /** Keeps Java callers and apps compiled against KmPDF 1.2.0 and earlier working. */
     @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
-    constructor() : this(PageSize.A4, "document.pdf", null, PdfMargins.None, 10.seconds)
+    constructor() : this(PageSize.A4, "document.pdf", null, PdfMargins.None, 10.seconds, PdfMetadata())
 
     /** Keeps apps compiled against KmPDF 1.2.0 and earlier working. */
     @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
@@ -267,7 +289,7 @@ data class PdfConfig(
         pageSize: PageSize = PageSize.A4,
         fileName: String = "document.pdf",
         outputDirectory: String? = null
-    ) : this(pageSize, fileName, outputDirectory, PdfMargins.None, 10.seconds)
+    ) : this(pageSize, fileName, outputDirectory, PdfMargins.None, 10.seconds, PdfMetadata())
 
     /** Keeps apps compiled against KmPDF 1.2.0 and earlier working. */
     @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
@@ -275,7 +297,7 @@ data class PdfConfig(
         pageSize: PageSize = this.pageSize,
         fileName: String = this.fileName,
         outputDirectory: String? = this.outputDirectory
-    ): PdfConfig = PdfConfig(pageSize, fileName, outputDirectory, margins, contentTimeout)
+    ): PdfConfig = PdfConfig(pageSize, fileName, outputDirectory, margins, contentTimeout, metadata)
 }
 
 /**

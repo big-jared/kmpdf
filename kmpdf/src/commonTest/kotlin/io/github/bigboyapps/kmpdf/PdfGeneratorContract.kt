@@ -91,6 +91,12 @@ abstract class PdfGeneratorContract {
     /** Counts the pages in [bytes] with the platform's own PDF engine. */
     protected abstract suspend fun pageCountOf(bytes: ByteArray): Int
 
+    /** Reads the document information back with the platform's own PDF engine (or the strict structure reader). */
+    protected abstract suspend fun readMetadata(result: PdfResult.Success): Map<String, String>
+
+    /** Whether KmPDF can set the producer. iOS's CoreGraphics always writes its own. */
+    protected open val writesProducer: Boolean = true
+
     /** A URI that [readPdfBytes] can't read on this platform. */
     protected open val missingPdfUri: String = "/kmpdf-missing/does-not-exist.pdf"
 
@@ -598,6 +604,31 @@ abstract class PdfGeneratorContract {
         val outcome = runCatching { readPdfBytes(missingPdfUri) }
 
         assertTrue(outcome.isFailure, "Reading a missing PDF should fail, but returned ${outcome.getOrNull()?.size} bytes")
+    }
+
+    @Test
+    fun metadataIsWrittenToThePdf() = runPdfTest {
+        val metadata = PdfMetadata(
+            title = "Quarterly report – Q3 ✓ résumé",
+            author = "Jane (Finance) Doe \\ Co",
+            subject = "Revenue",
+            keywords = "finance, q3",
+            creator = "KmPDF contract tests"
+        )
+        val result = createGenerator().generatePdf(config("contract-metadata.pdf").copy(metadata = metadata)) {
+            page { MarkerPage(PageMarkerColors[0]) }
+            page { MarkerPage(PageMarkerColors[1]) }
+        }
+        assertIs<PdfResult.Success>(result, "Expected a PDF with metadata, got $result")
+
+        val info = readMetadata(result)
+        assertEquals(metadata.title, info["Title"])
+        assertEquals(metadata.author, info["Author"])
+        assertEquals(metadata.subject, info["Subject"])
+        assertEquals(metadata.keywords, info["Keywords"])
+        assertEquals(metadata.creator, info["Creator"])
+        if (writesProducer) assertEquals("KmPDF $KMPDF_VERSION", info["Producer"])
+        assertEquals(2, readBack(result, renderPages = false).pageSizesPt.size, "The PDF should still open with both pages")
     }
 
     @Test

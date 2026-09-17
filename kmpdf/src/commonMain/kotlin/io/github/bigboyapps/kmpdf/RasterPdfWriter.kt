@@ -35,6 +35,9 @@ internal class RasterPdfWriter {
 
     private val pages = mutableListOf<PageImage>()
 
+    /** Info dictionary entries, as key and text value pairs, written when not empty. */
+    var info: List<Pair<String, String>> = emptyList()
+
     val pageCount: Int get() = pages.size
 
     fun addPage(image: PageImage) {
@@ -100,13 +103,21 @@ internal class RasterPdfWriter {
             )
         }
 
+        val infoReference = if (info.isNotEmpty()) {
+            val infoNumber = objectOffsets.size + 1
+            writeObject(infoNumber, "<< ${info.joinToString(" ") { (key, value) -> "/$key ${pdfTextString(value)}" }} >>")
+            " /Info $infoNumber 0 R"
+        } else {
+            ""
+        }
+
         val xrefOffset = out.size
         out.writeAscii("xref\n0 ${objectOffsets.size + 1}\n")
         out.writeAscii("0000000000 65535 f \n")
         objectOffsets.forEach { offset ->
             out.writeAscii("${offset.toString().padStart(10, '0')} 00000 n \n")
         }
-        out.writeAscii("trailer\n<< /Size ${objectOffsets.size + 1} /Root 1 0 R >>\n")
+        out.writeAscii("trailer\n<< /Size ${objectOffsets.size + 1} /Root 1 0 R$infoReference >>\n")
         out.writeAscii("startxref\n$xrefOffset\n%%EOF\n")
 
         return out.toByteArray()

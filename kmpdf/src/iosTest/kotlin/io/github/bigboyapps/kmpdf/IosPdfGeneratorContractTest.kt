@@ -6,6 +6,10 @@ import io.github.bigboyapps.kmpdf.testing.renderWithImageComposeScene
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
@@ -22,7 +26,11 @@ import platform.CoreFoundation.CFURLRef
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGDataProviderCreateWithCFData
 import platform.CoreGraphics.CGDataProviderRelease
+import platform.CoreGraphics.CGPDFDictionaryGetString
 import platform.CoreGraphics.CGPDFDocumentCreateWithProvider
+import platform.CoreGraphics.CGPDFDocumentGetInfo
+import platform.CoreGraphics.CGPDFStringCopyTextString
+import platform.CoreGraphics.CGPDFStringRefVar
 import platform.CoreGraphics.CGBitmapContextGetData
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
@@ -39,6 +47,7 @@ import platform.CoreGraphics.CGPDFDocumentRelease
 import platform.CoreGraphics.CGPDFPageGetBoxRect
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.kCGPDFMediaBox
+import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSDate
@@ -152,6 +161,32 @@ class IosPdfGeneratorContractTest : PdfGeneratorContract() {
 
     override fun outputExists(fileName: String): Boolean =
         NSFileManager.defaultManager.fileExistsAtPath("$pdfDirectory/$fileName")
+
+    override val writesProducer: Boolean = false
+
+    override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
+        withContext(Dispatchers.Main) {
+            @Suppress("UNCHECKED_CAST")
+            val url = CFBridgingRetain(NSURL.fileURLWithPath(result.filePath)) as CFURLRef
+            val document = CGPDFDocumentCreateWithURL(url)
+            CFRelease(url)
+            checkNotNull(document) { "CoreGraphics couldn't open ${result.filePath}" }
+            try {
+                val info = checkNotNull(CGPDFDocumentGetInfo(document)) { "The PDF has no Info dictionary" }
+                listOf("Title", "Author", "Subject", "Keywords", "Creator", "Producer").mapNotNull { key ->
+                    memScoped {
+                        val value = alloc<CGPDFStringRefVar>()
+                        if (CGPDFDictionaryGetString(info, key, value.ptr)) {
+                            key to (CFBridgingRelease(CGPDFStringCopyTextString(value.value)) as String)
+                        } else {
+                            null
+                        }
+                    }
+                }.toMap()
+            } finally {
+                CGPDFDocumentRelease(document)
+            }
+        }
 
     @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     override suspend fun pageCountOf(bytes: ByteArray): Int {

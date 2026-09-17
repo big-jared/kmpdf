@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
@@ -418,8 +419,13 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             val outputDir = File(context.cacheDir, "pdfs").apply { mkdirs() }
             val outputFile = File(outputDir, config.fileName)
 
+            // PdfDocument has no metadata API, so the Info dictionary is added as an incremental update
+            val pdfBytes = ByteArrayOutputStream().use { buffer ->
+                pdfDocument.writeTo(buffer)
+                buffer.toByteArray()
+            }
             FileOutputStream(outputFile).use { outputStream ->
-                pdfDocument.writeTo(outputStream)
+                outputStream.write(appendInfoDictionary(pdfBytes, config.metadata.infoEntries()))
             }
             logger.logDebug { "PDF written to: ${outputFile.absolutePath}" }
 

@@ -108,6 +108,7 @@ class WasmKmPdfGenerator : KmPdfGenerator {
         logger.logDebug { "Rendering ${plannedPages.size} pages" }
 
         val writer = RasterPdfWriter()
+        writer.info = config.metadata.infoEntries()
 
         plannedPages.forEachIndexed { index, plannedPage ->
             logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }

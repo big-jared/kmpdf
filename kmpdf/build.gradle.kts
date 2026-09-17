@@ -13,6 +13,23 @@ plugins {
 
 val libraryVersion = "1.2.0"
 
+// Generates KMPDF_VERSION from libraryVersion, so the version written into PDFs matches each release
+val generateVersionSource by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/kmpdfVersion/kotlin")
+    val version = libraryVersion
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("io/github/bigboyapps/kmpdf/KmPdfVersion.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            "package io.github.bigboyapps.kmpdf\n\n" +
+                "/** The KmPDF version, written into generated PDFs as their producer. */\n" +
+                "internal const val KMPDF_VERSION = \"$version\"\n"
+        )
+    }
+}
+
 mavenPublishing {
     coordinates(
         groupId = "io.github.big-jared",
@@ -102,6 +119,10 @@ kotlin {
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateVersionSource)
+        }
+
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)

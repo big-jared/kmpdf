@@ -58,4 +58,17 @@ class JvmPdfGeneratorContractTest : PdfGeneratorContract() {
     override fun outputExists(fileName: String): Boolean = File(outputDir, fileName).exists()
 
     override suspend fun pageCountOf(bytes: ByteArray): Int = Loader.loadPDF(bytes).use { it.numberOfPages }
+
+    override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
+        Loader.loadPDF(File(result.filePath)).use { document ->
+            val info = document.documentInformation
+            mapOf(
+                "Title" to info.title,
+                "Author" to info.author,
+                "Subject" to info.subject,
+                "Keywords" to info.keywords,
+                "Creator" to info.creator,
+                "Producer" to info.producer
+            ).mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
+        }
 }
