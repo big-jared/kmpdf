@@ -105,3 +105,24 @@ fun StackedBlocks() {
         Box(Modifier.fillMaxWidth().height(77.dp).background(Color.Blue))
     }
 }
+
+/**
+ * A color that encodes an item index from 0 to 99 for pagination checks. Neighboring indexes differ by at
+ * least 10 in a channel, so small color shifts from a PDF renderer can't be mistaken for another item.
+ */
+fun itemColor(index: Int): Color {
+    require(index in 0..99) { "Item index must be 0 to 99, was $index" }
+    return Color(red = index % 25 * 10, green = index / 25 * 60, blue = 128)
+}
+
+/** Decodes [itemColor], or returns null when [rgb] isn't close to an item color. */
+fun decodeItemIndex(rgb: Rgb): Int? {
+    val low = (rgb.r + 5) / 10
+    val high = (rgb.g + 30) / 60
+    val index = high * 25 + low
+    if (low !in 0..24 || high !in 0..3) return null
+    return index.takeIf { rgb.distanceTo(Rgb(low * 10, high * 60, 128)) <= 4 }
+}
+
+/** A color that encodes a page number and page count, for footer checks. */
+fun footerColor(pageNumber: Int, pageCount: Int): Color = Color(red = pageNumber * 20, green = pageCount * 20, blue = 255)

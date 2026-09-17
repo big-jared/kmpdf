@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +28,9 @@ import io.github.bigboyapps.kmpdf.testing.PageMarkerColors
 import io.github.bigboyapps.kmpdf.testing.Rgb
 import io.github.bigboyapps.kmpdf.testing.RgbaImage
 import io.github.bigboyapps.kmpdf.testing.StackedBlocks
+import io.github.bigboyapps.kmpdf.testing.decodeItemIndex
+import io.github.bigboyapps.kmpdf.testing.footerColor
+import io.github.bigboyapps.kmpdf.testing.itemColor
 import io.github.bigboyapps.kmpdf.testing.TestPageException
 import io.github.bigboyapps.kmpdf.testing.TransparentContent
 import io.github.bigboyapps.kmpdf.testing.assertPixelsDiffer
@@ -494,6 +498,79 @@ abstract class PdfGeneratorContract {
         assertColorAt(document.pages[0], markerPx, markerPx, PageMarkerColors[0].toRgb(), "Page 1 marker")
         assertColorAt(document.pages[1], markerPx, markerPx, PageMarkerColors[1].toRgb(), "Page 2 marker")
         assertColorAt(document.pages[2], document.pages[2].width / 2, document.pages[2].height / 2, PageMarkerColors[2].toRgb(), "Page 3 fill")
+    }
+
+    @Test
+    fun itemsFlowAcrossPagesWithoutSplitting() = runPdfTest {
+        val itemHeights = List(100) { index -> 20 + index * 37 % 60 }
+        val margins = PdfMargins.Narrow
+        val headerHeight = 30
+        val footerHeight = 20
+        val spacing = 4
+        val result = createGenerator().generatePdf(config("contract-pagination.pdf", PageSize.Letter).copy(margins = margins)) {
+            pages(
+                items = itemHeights.indices.toList(),
+                itemSpacing = spacing.dp,
+                header = { Box(Modifier.fillMaxWidth().height(headerHeight.dp).background(Color.Black)) },
+                footer = { info ->
+                    Box(Modifier.fillMaxWidth().height(footerHeight.dp).background(footerColor(info.pageNumber, info.pageCount)))
+                }
+            ) { index ->
+                Box(Modifier.fillMaxWidth().height(itemHeights[index].dp).background(itemColor(index)))
+            }
+        }
+        assertIs<PdfResult.Success>(result, "Expected paginated items to generate, got $result")
+
+        // Letter (792 pt) minus 36 pt margins, the header, and the footer
+        val available = 792f - 72f - headerHeight - footerHeight
+        val expectedPages = (packIntoPages(itemHeights.map { it.toFloat() }, available, spacing.toFloat()) as PagePacking.Packed).pages
+        val document = readBack(result)
+        assertEquals(expectedPages.size, result.pageCount, "Page count should match the packing")
+        assertEquals(expectedPages.size, document.pages.size)
+
+        val itemsTop = (36 + headerHeight) * RENDER_SCALE
+        document.pages.forEachIndexed { pageIndex, page ->
+            val range = expectedPages[pageIndex]
+            val midX = page.width / 2
+            val first = decodeItemIndex(page.pixel(midX, itemsTop + EDGE_OFFSET_PX))
+            val itemsHeight = range.sumOf { itemHeights[it] } + spacing * (range.count() - 1)
+            val last = decodeItemIndex(page.pixel(midX, itemsTop + itemsHeight * RENDER_SCALE - EDGE_OFFSET_PX))
+            assertEquals(range.first, first, "First item on page ${pageIndex + 1}")
+            assertEquals(range.last, last, "Last item on page ${pageIndex + 1}")
+
+            val footerY = page.height - (36 + footerHeight / 2) * RENDER_SCALE
+            assertColorAt(page, midX, footerY, footerColor(pageIndex + 1, expectedPages.size).toRgb(), "Footer on page ${pageIndex + 1}")
+        }
+    }
+
+    @Test
+    fun pageInfoIsProvidedToEveryPage() = runPdfTest {
+        val pageContent: @Composable () -> Unit = {
+            val info = LocalPdfPageInfo.current
+            Box(Modifier.fillMaxSize().background(footerColor(info.pageNumber, info.pageCount)))
+        }
+        val result = generateSuccessfully("contract-page-info.pdf") {
+            page(pageContent)
+            pages(items = listOf(1, 2)) { Box(Modifier.fillMaxWidth().height(500.dp)) { pageContent() } }
+            page(size = PageSize.Letter, content = pageContent)
+        }
+        val document = readBack(result)
+
+        assertEquals(4, document.pages.size, "1 page, 2 flowing pages of one 500 pt item each, then 1 page")
+        document.pages.forEachIndexed { index, page ->
+            assertColorAt(page, page.width / 2, 100, footerColor(index + 1, 4).toRgb(), "Page info on page ${index + 1}")
+        }
+    }
+
+    @Test
+    fun itemTallerThanAPageFails() = runPdfTest {
+        val result = generate("contract-item-too-tall.pdf") {
+            pages(items = listOf(100, 2000, 100)) { height -> Box(Modifier.fillMaxWidth().height(height.dp)) }
+        }
+
+        assertIs<PdfResult.Error.RenderingFailed>(result, "Expected an oversized item to fail, got $result")
+        assertTrue(result.message.contains("Item 2"), "Error should name the item: ${result.message}")
+        assertFalse(outputExists("contract-item-too-tall.pdf"))
     }
 
     @Test

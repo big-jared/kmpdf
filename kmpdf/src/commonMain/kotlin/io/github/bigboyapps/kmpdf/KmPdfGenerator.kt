@@ -104,8 +104,8 @@ data class PageSize(
 /**
  * Defines the pages of a PDF document.
  *
- * Each page renders its content exactly as provided, with no automatic pagination.
- * The user is responsible for ensuring content fits within the page dimensions.
+ * [page] renders its content exactly as provided, with no automatic pagination. [pages] flows a list
+ * of items across as many pages as they need.
  */
 class PdfPageScope internal constructor() {
     internal val pages = mutableListOf<PageSpec>()
@@ -117,7 +117,7 @@ class PdfPageScope internal constructor() {
      *                within the page dimensions specified in PdfConfig.
      */
     fun page(content: @Composable () -> Unit) {
-        pages.add(PageSpec(size = null, content = content))
+        pages.add(PageSpec.Single(size = null, content = content))
     }
 
     /**
@@ -127,12 +127,68 @@ class PdfPageScope internal constructor() {
      * @param content The composable content for this page.
      */
     fun page(size: PageSize, content: @Composable () -> Unit) {
-        pages.add(PageSpec(size = size, content = content))
+        pages.add(PageSpec.Single(size = size, content = content))
+    }
+
+    /**
+     * Flows [items] across as many pages as they need, in order, never splitting an item across pages.
+     *
+     * Every item is measured at the content width (the page width minus the margins), then items are
+     * placed from the top of each page until the next one doesn't fit. Pages use [PdfConfig.pageSize],
+     * which must have a fixed height. Items shouldn't fill the page height, since they're laid out in a column.
+     *
+     * An item taller than the space available on a page makes generation return
+     * [PdfResult.Error.RenderingFailed].
+     *
+     * ```kotlin
+     * pages(
+     *     items = invoiceLines,
+     *     itemSpacing = 4.dp,
+     *     header = { Text("Invoice #1234") },
+     *     footer = { info -> Text("Page ${info.pageNumber} of ${info.pageCount}") }
+     * ) { line ->
+     *     InvoiceLineRow(line)
+     * }
+     * ```
+     *
+     * @param items The items to lay out, in order.
+     * @param itemSpacing Space between consecutive items on the same page.
+     * @param header Content at the top of every page, given the page's [PdfPageInfo].
+     * @param footer Content at the bottom of every page, given the page's [PdfPageInfo].
+     * @param itemContent The content for one item.
+     */
+    fun <T> pages(
+        items: List<T>,
+        itemSpacing: Dp = 0.dp,
+        header: (@Composable (PdfPageInfo) -> Unit)? = null,
+        footer: (@Composable (PdfPageInfo) -> Unit)? = null,
+        itemContent: @Composable (T) -> Unit
+    ) {
+        require(itemSpacing.value >= 0f) { "itemSpacing must be zero or positive, got $itemSpacing" }
+        pages.add(
+            PageSpec.Flow(
+                items = items.map { item -> @Composable { itemContent(item) } },
+                itemSpacing = itemSpacing,
+                header = header,
+                footer = footer
+            )
+        )
     }
 }
 
-/** A page requested with [PdfPageScope.page], before its size is resolved. */
-internal class PageSpec(val size: PageSize?, val content: @Composable () -> Unit)
+/** Pages requested with [PdfPageScope], before their sizes and page breaks are resolved. */
+internal sealed class PageSpec {
+    /** One page, sized by [size] or the configured page size. */
+    class Single(val size: PageSize?, val content: @Composable () -> Unit) : PageSpec()
+
+    /** Items that flow across as many pages as they need. */
+    class Flow(
+        val items: List<@Composable () -> Unit>,
+        val itemSpacing: Dp,
+        val header: (@Composable (PdfPageInfo) -> Unit)?,
+        val footer: (@Composable (PdfPageInfo) -> Unit)?
+    ) : PageSpec()
+}
 
 /**
  * Space between the edges of each page and its content, in points (1 point = 1/72 inch).

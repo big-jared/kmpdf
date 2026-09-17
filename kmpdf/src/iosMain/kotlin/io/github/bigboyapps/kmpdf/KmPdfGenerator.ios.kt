@@ -113,8 +113,8 @@ class IosKmPdfGenerator : KmPdfGenerator {
 
                 val density = Density(PAGE_RENDER_SCALE)
                 val plannedPages = try {
-                    planPages(config, pageScope.pages) { content, widthPx ->
-                        measureContentHeightPx(content, widthPx, density, config.contentTimeout)
+                    planPages(config, pageScope.pages) { contents, widthPx ->
+                        measureContentHeightsPx(contents, widthPx, density, config.contentTimeout)
                     }
                 } catch (e: CancellationException) {
                     throw e

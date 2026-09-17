@@ -56,14 +56,14 @@ internal suspend fun renderPageImage(
     }
 }
 
-/** Measures how tall [content] is at [widthPx] with no height limit, once it's ready. */
-internal suspend fun measureContentHeightPx(
-    content: @Composable () -> Unit,
+/** Measures how tall each of [contents] is at [widthPx] with no height limit, once they're ready. */
+internal suspend fun measureContentHeightsPx(
+    contents: List<@Composable () -> Unit>,
     widthPx: Int,
     density: Density,
     contentTimeout: Duration
-): Int {
-    var heightPx = 0
-    renderPageImage({ MeasureContentHeight(content) { heightPx = it } }, widthPx, 1, density, contentTimeout).close()
-    return heightPx
+): List<Int> {
+    var heightsPx = emptyList<Int>()
+    renderPageImage({ MeasureContentHeights(contents) { heightsPx = it } }, widthPx, 1, density, contentTimeout).close()
+    return heightsPx
 }

@@ -203,11 +203,11 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             }
 
             val plannedPages = try {
-                planPages(config, pageScope.pages) { content, widthPx ->
-                    var heightPx = 0
-                    renderPage({ MeasureContentHeight(content) { heightPx = it } }, widthPx, 1, config.contentTimeout)
+                planPages(config, pageScope.pages) { contents, widthPx ->
+                    var heightsPx = emptyList<Int>()
+                    renderPage({ MeasureContentHeights(contents) { heightsPx = it } }, widthPx, 1, config.contentTimeout)
                         .recycle()
-                    heightPx
+                    heightsPx
                 }
             } catch (e: CancellationException) {
                 throw e

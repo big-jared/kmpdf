@@ -74,11 +74,13 @@ Shared validation rules, used by every platform's tests:
 **Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 25/25 contract tests, including seven page-size tests: content-sized pages match the reference render, include vertical margins, round 100.3 pt of content up to 101 pt, make an empty page 1 pt tall, reject content over 14,400 pt without writing a file, measure content only after it finishes loading, and mix A4, Letter, and wrap-height pages in one document. Pages are measured in a planning step shared by every platform before they're rendered, and the web writer now supports a different size for each page. `apiCheck` shows only additions.
 
 ### 4. Automatic pagination
-- [ ] `pages(items, itemSpacing, header, footer) { item -> ... }` measures every item at the content width and fills pages in order, never splitting an item across pages.
-- [ ] Headers and footers get `PdfPageInfo(pageNumber, pageCount)`. `LocalPdfPageInfo` is also available inside any page's content.
-- [ ] An item taller than the available page height returns `RenderingFailed` naming the item index.
-- [ ] The packing logic is a pure function with `commonTest` coverage (runs on every platform): exact fits, spacing, headers and footers, varying heights, and oversized items.
-- [ ] A render test on every platform: 100 items of varying heights produce the page count the packing predicts, and page read-back confirms each page's first and last item markers and its footer page number.
+- [x] `pages(items, itemSpacing, header, footer) { item -> ... }` measures every item at the content width and fills pages in order, never splitting an item across pages.
+- [x] Headers and footers get `PdfPageInfo(pageNumber, pageCount)`. `LocalPdfPageInfo` is also available inside any page's content.
+- [x] An item taller than the available page height returns `RenderingFailed` naming the item index.
+- [x] The packing and planning logic is covered by `commonTest` (runs on every platform): exact fits, spacing, headers and footers, varying heights, oversized items, page numbering across mixed pages, and wrap-height configs that can't paginate.
+- [x] A render test on every platform: 100 items of varying heights produce the page count the packing predicts, and page read-back confirms each page's first and last item markers and its footer page number.
+
+**Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 28/28 contract tests, plus `PagePackingTest` (10/10) and `PagePlanningTest` (7/7) on every platform. The render test flows 100 items of varying heights across Letter pages with Narrow margins, a header, and a footer, then reads each page back to check its first and last item (color-coded by index) and its footer's page number and page count against the packing. `LocalPdfPageInfo` is checked on single and flowing pages. The first Android run misread an item index because the test's colors were only 2 steps apart; the encoding now keeps neighboring items at least 10 apart, and all four platforms pass. `apiCheck` shows only additions.
 
 ### 5. `readPdfBytes` on every platform
 - [ ] A common `suspend fun readPdfBytes(uri: String): ByteArray` (content/file URI on Android, file path on iOS and Desktop, blob URL on web).

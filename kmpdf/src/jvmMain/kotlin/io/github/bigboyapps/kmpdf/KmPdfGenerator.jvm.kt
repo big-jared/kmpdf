@@ -50,9 +50,9 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
 
             val density = Density(PAGE_RENDER_SCALE)
             val plannedPages = try {
-                planPages(config, pageScope.pages) { content, widthPx ->
+                planPages(config, pageScope.pages) { contents, widthPx ->
                     withContext(Dispatchers.Main) {
-                        measureContentHeightPx(content, widthPx, density, config.contentTimeout)
+                        measureContentHeightsPx(contents, widthPx, density, config.contentTimeout)
                     }
                 }
             } catch (e: CancellationException) {
