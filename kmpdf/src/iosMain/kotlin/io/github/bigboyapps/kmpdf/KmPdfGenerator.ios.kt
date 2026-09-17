@@ -10,6 +10,7 @@ import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import platform.CoreGraphics.CGContextDrawImage
@@ -136,6 +137,8 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 try {
                     // Render and write one page at a time so only one page image is in memory
                     pageContents.forEachIndexed { index, pageContent ->
+                        // Generation runs without suspending, so check for cancellation explicitly
+                        ensureActive()
                         logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                         val uiImage = try {
@@ -172,6 +175,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
                         // Restore graphics state
                         CGContextRestoreGState(context)
                     }
+                    ensureActive()
                     allPagesWritten = true
                 } finally {
                     UIGraphicsEndPDFContext()
@@ -216,7 +220,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
             width = widthPx,
             height = heightPx,
             density = Density(scale.toFloat()),
-            content = content
+            content = { PageRoot(content) }
         )
         try {
             val image = scene.render()

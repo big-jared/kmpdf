@@ -18,6 +18,16 @@ import androidx.compose.ui.unit.Density
 import androidx.core.content.FileProvider
 import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +36,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
+import kotlin.math.ceil
 import android.graphics.Canvas as AndroidCanvas
 
 private val logger = Logger.withTag("KmPdfGenerator")
@@ -139,6 +150,37 @@ actual fun sharePdf(uri: String, title: String) {
     }
 }
 
+/**
+ * Compose needs a lifecycle owner and a saved state registry owner from the view tree. Activities that
+ * never called setContentView (or plain Activities) don't provide them, so fall back to the Activity's
+ * own owners, or to an always-resumed owner for the lifetime of the offscreen render.
+ */
+private fun ComposeView.installViewTreeOwnersIfMissing(parent: View, activity: Activity) {
+    val fallback by lazy { OffscreenViewTreeOwner() }
+    if (parent.findViewTreeLifecycleOwner() == null) {
+        setViewTreeLifecycleOwner(activity as? LifecycleOwner ?: fallback)
+    }
+    if (parent.findViewTreeSavedStateRegistryOwner() == null) {
+        setViewTreeSavedStateRegistryOwner(activity as? SavedStateRegistryOwner ?: fallback)
+    }
+}
+
+private class OffscreenViewTreeOwner : LifecycleOwner, SavedStateRegistryOwner {
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val savedStateController = SavedStateRegistryController.create(this)
+
+    init {
+        savedStateController.performRestore(null)
+        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+    }
+
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
+    override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
+}
+
+/** Whether this Activity is going away or has been replaced, e.g. by recreation during a render. */
+private fun Activity.wasTornDown(): Boolean = isFinishing || isDestroyed || liveActivity() !== this
+
 /** Raised when a page cannot be rendered (e.g. no live Activity, or repeated teardown mid-render). */
 private class PdfRenderingException(message: String, cause: Throwable?) : Exception(message, cause)
 
@@ -162,8 +204,9 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 return@withContext PdfResult.Error.Unknown("No pages defined")
             }
 
-            val widthPt = config.pageSize.width.value.toInt()
-            val heightPt = config.pageSize.height.value.toInt()
+            // PdfDocument only supports whole-point page sizes; round up so content is never cut off
+            val widthPt = ceil(config.pageSize.width.value).toInt()
+            val heightPt = ceil(config.pageSize.height.value).toInt()
             val widthPx = (widthPt * RENDER_SCALE).toInt()
             val heightPx = (heightPt * RENDER_SCALE).toInt()
 
@@ -229,7 +272,12 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 return renderPageOnActivity(activity, pageContent, widthPx, heightPx)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: IllegalStateException) {
+            } catch (e: Exception) {
+                if (!activity.wasTornDown()) {
+                    // Failures that aren't caused by Activity recreation, like page content throwing,
+                    // won't succeed on a retry
+                    throw PdfRenderingException("Failed to render page: ${e.message}", e)
+                }
                 // The host window was torn down mid-render (Activity recreated). Re-acquire the
                 // now-current Activity and try again instead of crashing.
                 logger.logDebug { "Page render attempt failed (${e.message}); retrying" }
@@ -257,7 +305,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             composeView = ComposeView(activity).apply {
                 setContent {
                     CompositionLocalProvider(LocalDensity provides Density(RENDER_SCALE)) {
-                        pageContent()
+                        PageRoot(pageContent)
                     }
                 }
                 alpha = 0f
@@ -265,6 +313,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 translationY = OFFSCREEN_TRANSLATION
                 clipToPadding = false
                 clipChildren = false
+                installViewTreeOwnersIfMissing(parentView, activity)
             }
 
             parentView.addView(composeView, FrameLayout.LayoutParams(widthPx, heightPx))

@@ -148,7 +148,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
             width = width,
             height = height,
             density = density,
-            content = content
+            content = { PageRoot(content) }
         )
 
         try {

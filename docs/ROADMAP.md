@@ -12,22 +12,22 @@ Every platform validates its own output with its own PDF engine. A generated PDF
 |---|---|---|---|
 | Desktop (JVM) | `:kmpdf:jvmTest` | PDFBox (`Loader`, `PDFRenderer`) | `ImageComposeScene` |
 | iOS | `:kmpdf:iosSimulatorArm64Test` | CoreGraphics (`CGPDFDocument`, `CGContextDrawPDFPage`) | `ImageComposeScene` |
-| Android | `:kmpdf:connectedAndroidTest` (emulator) | `android.graphics.pdf.PdfRenderer` | `ComposeView` drawn to a `Bitmap` |
+| Android | Instrumented tests (`am instrument` on a device or emulator) | `android.graphics.pdf.PdfRenderer` | `ComposeView` drawn to a `Bitmap` |
 | Web (WASM) | `:kmpdf:wasmJsBrowserTest` (headless Chrome) | Shared PDF structure reader + `DecompressionStream` to decode page images | `ImageComposeScene` |
 
 Shared validation rules, used by every platform's tests:
 
 - **Structure:** the file starts with `%PDF-`, ends with `%%EOF`, and parses without repair. Page count matches the pages requested. Each page's MediaBox matches the expected size (±0.01 pt; Android rounds to whole points, see below).
-- **Pixels:** the read-back render is compared with the reference render at the same pixel size. A match needs a mean absolute channel difference ≤ 2.0 and ≥ 99.5% of pixels within ±24 per channel. (Different engines resample slightly differently, so the comparison allows a little tolerance but no layout differences.)
-- **Negative controls:** each pixel suite also shows that a deliberately wrong reference fails the comparison: content shifted by 4 dp, a different color, and different text. If a wrong render passes, the comparison is too weak and the suite fails.
+- **Pixels:** the read-back render is compared with the reference render at the same pixel size. The image is split into 16 × 16 px tiles. A match needs a global mean absolute channel difference ≤ 2.0 **and no tile** with a mean absolute channel difference above 16. Different engines resample slightly differently, which spreads thin noise across tiles. A real content change (even one character) concentrates in a tile and fails.
+- **Negative controls:** each pixel suite also shows that a deliberately wrong reference fails the comparison: content shifted by 4 dp, a different color, and a single changed character. If a wrong render passes, the comparison is too weak and the suite fails.
 - **Page order:** multi-page tests give each page a distinct marker color and check that the pages come back in order.
 
 ## Items
 
 ### 0. Validation harness and edge cases for existing behavior
-- [ ] Shared test utilities in `commonTest`: pixel comparison with the thresholds above, and a minimal PDF structure reader (header/EOF, xref offsets, page count, MediaBox, Info dictionary).
-- [ ] Platform read-back suites for JVM, iOS, Android, and Web, including negative controls.
-- [ ] Edge cases on **every platform**:
+- [x] Shared test utilities in `commonTest`: pixel comparison with the thresholds above, and a minimal PDF structure reader (header/EOF, xref offsets, page count, MediaBox, Info dictionary).
+- [x] Platform read-back suites for JVM, iOS, Android, and Web, including negative controls.
+- [x] Edge cases on **every platform**:
   - Multi-page documents come back in the right order.
   - A4, Letter, a custom landscape size, and a fractional size (612.5 × 792.25). Android pages round up to whole points, so its tests expect 613 × 793.
   - Transparent content renders on white.
@@ -36,6 +36,15 @@ Shared validation rules, used by every platform's tests:
   - Page content that throws returns `RenderingFailed`, and no output file is left behind (no file on web).
   - Cancellation propagates `CancellationException`, and no partial file is left.
   - A 30-page A4 document generates successfully.
+
+**Verified:** JVM 10/10, iOS simulator 10/10, Web (headless Chrome) 10/10, and Android (Pixel 8a, Android 16) 10/10 contract tests, plus the structure reader tests (5/5) on every platform.
+
+**Bugs found and fixed by the harness:**
+- iOS kept writing the complete PDF after cancellation, because rendering never suspended.
+- Android crashed with `ViewTreeLifecycleOwner not found` when the host Activity hadn't called `setContentView`, or was a plain `Activity`.
+- Android gave page content exact page-size constraints while the other platforms gave loose ones, so `Modifier.size(50.dp)` filled the whole page on Android only. All platforms now render pages in a shared `PageRoot`.
+- Android truncated fractional page sizes (612.5 → 612) instead of rounding up.
+- On Android, page content that threw escaped `generatePdf` (crashing the caller) and was retried as if the Activity had been recreated.
 
 ### 1. Margins
 - [ ] `PdfConfig(margins = PdfMargins(...))` with presets `None` (default), `Narrow`, `Normal`, and `Wide`, plus custom per-side values.
@@ -75,7 +84,7 @@ Shared validation rules, used by every platform's tests:
 ## Final checks
 
 - [ ] `./gradlew :kmpdf:jvmTest :kmpdf:iosSimulatorArm64Test :kmpdf:wasmJsBrowserTest` pass.
-- [ ] `./gradlew :kmpdf:connectedAndroidTest` passes on an emulator.
+- [ ] The Android instrumented tests pass on a device or emulator (run with `am instrument`, one test method at a time).
 - [ ] `./gradlew :kmpdf:apiCheck detekt` pass. API dumps are updated only for the intentional additions above, with no removed or changed signatures.
 - [ ] The sample builds on every platform (`:sample:assembleDebug`, `:sample:compileKotlinJvm`, `:sample:wasmJsBrowserDevelopmentExecutableDistribution`, the iOS app) and demonstrates margins, wrap content, pagination, and metadata.
 - [ ] The README and KDoc document every new API, including the Android whole-point rounding and the image-based (non-selectable text) output.

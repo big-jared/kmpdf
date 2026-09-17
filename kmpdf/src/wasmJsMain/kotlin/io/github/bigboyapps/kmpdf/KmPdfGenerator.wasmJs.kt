@@ -160,7 +160,7 @@ class WasmKmPdfGenerator : KmPdfGenerator {
             width = width,
             height = height,
             density = density,
-            content = content
+            content = { PageRoot(content) }
         )
         val image = try {
             scene.render()
