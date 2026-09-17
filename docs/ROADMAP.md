@@ -98,9 +98,11 @@ Shared validation rules, used by every platform's tests:
 
 ## Final checks
 
-- [ ] `./gradlew :kmpdf:jvmTest :kmpdf:iosSimulatorArm64Test :kmpdf:wasmJsBrowserTest` pass.
-- [ ] The Android instrumented tests pass on a device or emulator (run with `am instrument`, one test method at a time).
-- [ ] `./gradlew :kmpdf:apiCheck detekt` pass. API dumps are updated only for the intentional additions above, with no removed or changed signatures.
-- [ ] The sample builds on every platform (`:sample:assembleDebug`, `:sample:compileKotlinJvm`, `:sample:wasmJsBrowserDevelopmentExecutableDistribution`, the iOS app) and demonstrates margins, wrap content, pagination, and metadata.
-- [ ] The README and KDoc document every new API, including the Android whole-point rounding and the image-based (non-selectable text) output.
-- [ ] Nothing is pushed, and `.claude/settings.local.json`, `.claude/launch.json`, and the local `publish.yml` deletion aren't committed.
+- [x] `./gradlew :kmpdf:jvmTest :kmpdf:iosSimulatorArm64Test :kmpdf:wasmJsBrowserTest` pass.
+- [x] The Android instrumented tests pass on a device or emulator (run with `am instrument`, one test method at a time).
+- [x] `./gradlew :kmpdf:apiCheck detekt` pass. API dumps are updated only for the intentional additions above, with no removed or changed signatures.
+- [x] The sample builds on every platform (`:sample:assembleDebug`, `:sample:compileKotlinJvm`, `:sample:wasmJsBrowserDevelopmentExecutableDistribution`, the iOS app) and demonstrates margins, wrap content, pagination, and metadata.
+- [x] The README and KDoc document every new API, including the Android whole-point rounding and the image-based (non-selectable text) output.
+- [x] Nothing is pushed, and `.claude/settings.local.json`, `.claude/launch.json`, and the local `publish.yml` deletion aren't committed.
+
+**Verified:** Final run: JVM, iOS simulator, and Web (headless Chrome) each pass 31/31 contract tests plus every shared suite (packing 10, planning 7, margins 5, structure reader 5), JVM also passes `PdfInfoTest` (5), `RasterPdfWriterTest` (6), and `DesktopKmPdfGeneratorTest` (3), and Android (Pixel 8a, Android 16) passes 31/31 contract tests plus the same shared suites, run one method at a time with `am instrument`. `apiCheck` and detekt pass. The sample builds for Android (`assembleDebug`), Desktop, Web (`wasmJsBrowserDevelopmentExecutableDistribution`), and iOS (Xcode, built without asset catalogs because Xcode's asset catalog agent fails to launch on this machine; that only removes the app icon), and now includes a receipt page sized to its content, a 100-row invoice with automatic pagination and page numbers, a margins picker, and metadata on every sample PDF. Nothing was pushed.

@@ -62,6 +62,7 @@ internal inline fun Logger.logInfo(message: () -> String) {
  *
  * Note: The width and height values are in points (1 point = 1/72 inch), though represented
  * as Dp for convenience. These are the standard PDF page dimensions, not screen pixels.
+ * Android's PdfDocument only supports whole points, so on Android fractional sizes round up.
  *
  * @property width The width of the page in points.
  * @property height The height of the page in points, or [Dp.Unspecified] for a page that's as tall as
@@ -302,6 +303,9 @@ data class PdfConfig(
 
 /**
  * Generator for creating PDF documents from Compose UI content.
+ *
+ * Each page is rendered to a high-resolution image (2 pixels per point) and embedded in the PDF, so the
+ * output looks exactly like the composable, but its text can't be selected or searched.
  *
  * Use [createKmPdfGenerator] to obtain an instance of this interface.
  *

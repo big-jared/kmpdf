@@ -29,8 +29,12 @@ fun App() {
     }
 }
 
-enum class SampleType {
-    DEFAULT, LONG_TABLE, MIXED_CONTENT
+enum class SampleType(val title: String) {
+    DEFAULT("Chart and text"),
+    LONG_TABLE("Long table"),
+    MIXED_CONTENT("Mixed content"),
+    RECEIPT("Receipt"),
+    PAGINATED_INVOICE("Paginated invoice")
 }
 
 @Composable
@@ -124,7 +128,9 @@ fun SampleScreen() {
                     listOf(
                         "Default (Chart & Text)" to SampleType.DEFAULT,
                         "Long Table (50+ rows)" to SampleType.LONG_TABLE,
-                        "Mixed Content (Text, Lists, Quotes)" to SampleType.MIXED_CONTENT
+                        "Mixed Content (Text, Lists, Quotes)" to SampleType.MIXED_CONTENT,
+                        "Receipt (Page Sized to Content)" to SampleType.RECEIPT,
+                        "Invoice (Automatic Pagination, 100 Rows)" to SampleType.PAGINATED_INVOICE
                     ).forEach { (name, type) ->
                         FilterChip(
                             selected = selectedSample == type,
@@ -148,7 +154,13 @@ fun SampleScreen() {
                         config = PdfConfig(
                             pageSize = selectedPageSize,
                             fileName = "sample_${getCurrentTimestamp()}.pdf",
-                            margins = selectedMargins
+                            margins = selectedMargins,
+                            metadata = PdfMetadata(
+                                title = "KmPDF sample: ${selectedSample.title}",
+                                author = "KmPDF",
+                                subject = "Generated from Compose UI",
+                                creator = "KmPDF Sample App"
+                            )
                         )
                     ) {
                         when (selectedSample) {
@@ -171,6 +183,21 @@ fun SampleScreen() {
                                 }
                                 page {
                                     MixedContentPage(2)
+                                }
+                            }
+                            SampleType.RECEIPT -> {
+                                // A narrow page that's exactly as tall as the receipt
+                                page(size = PageSize.wrapHeight(280.dp)) {
+                                    ReceiptContent()
+                                }
+                            }
+                            SampleType.PAGINATED_INVOICE -> {
+                                pages(
+                                    items = sampleInvoiceRows,
+                                    header = { InvoiceHeader() },
+                                    footer = { info -> InvoiceFooter(info) }
+                                ) { row ->
+                                    InvoiceRowContent(row)
                                 }
                             }
                         }
