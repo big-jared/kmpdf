@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +26,7 @@ import io.github.bigboyapps.kmpdf.testing.OversizedContent
 import io.github.bigboyapps.kmpdf.testing.PageMarkerColors
 import io.github.bigboyapps.kmpdf.testing.Rgb
 import io.github.bigboyapps.kmpdf.testing.RgbaImage
+import io.github.bigboyapps.kmpdf.testing.StackedBlocks
 import io.github.bigboyapps.kmpdf.testing.TestPageException
 import io.github.bigboyapps.kmpdf.testing.TransparentContent
 import io.github.bigboyapps.kmpdf.testing.assertPixelsDiffer
@@ -381,6 +384,116 @@ abstract class PdfGeneratorContract {
         generateSuccessfully("contract-static.pdf") { page { DetailedContent() } }
 
         assertEquals(0, PdfRenderDiagnostics.lastPageExtraFrames, "A static page shouldn't wait for extra frames")
+    }
+
+    private fun assertPageSize(actual: Pair<Float, Float>, width: Float, height: Float, what: String) {
+        val (expectedWidth, expectedHeight) = expectedPageSizePt(width, height)
+        assertTrue(
+            abs(actual.first - expectedWidth) <= SIZE_TOLERANCE_PT && abs(actual.second - expectedHeight) <= SIZE_TOLERANCE_PT,
+            "$what should be $expectedWidth x $expectedHeight pt but was ${actual.first} x ${actual.second} pt"
+        )
+    }
+
+    @Test
+    fun wrapHeightPageFitsItsContent() = runPdfTest {
+        val result = generateSuccessfully("contract-wrap.pdf") {
+            page(size = PageSize.wrapHeight(400.dp)) { StackedBlocks() }
+        }
+        val document = readBack(result)
+
+        assertPageSize(document.pageSizesPt.single(), 400f, 200f, "Wrap-height page")
+        val page = document.pages.single()
+        assertPixelsMatch(referenceOnWhite({ StackedBlocks() }, page.width, page.height), page, "Wrap-height content")
+    }
+
+    @Test
+    fun wrapHeightIncludesVerticalMargins() = runPdfTest {
+        val margins = PdfMargins.symmetric(horizontal = 20.dp, vertical = 72.dp)
+        val result = createGenerator().generatePdf(config("contract-wrap-margins.pdf").copy(margins = margins)) {
+            page(size = PageSize.wrapHeight(400.dp)) { StackedBlocks() }
+        }
+        assertIs<PdfResult.Success>(result, "Expected a wrap-height page with margins, got $result")
+        val document = readBack(result)
+
+        assertPageSize(document.pageSizesPt.single(), 400f, 344f, "Wrap-height page with 72 pt vertical margins")
+        val page = document.pages.single()
+        val top = 72 * RENDER_SCALE
+        val bottom = page.height - 72 * RENDER_SCALE
+        assertColorAt(page, page.width / 2, top - EDGE_OFFSET_PX, Rgb(255, 255, 255), "Top margin")
+        assertColorAt(page, page.width / 2, top + EDGE_OFFSET_PX, Rgb(255, 0, 0), "Top of the content")
+        assertColorAt(page, page.width / 2, bottom - EDGE_OFFSET_PX, Rgb(0, 0, 255), "Bottom of the content")
+        assertColorAt(page, page.width / 2, bottom + EDGE_OFFSET_PX, Rgb(255, 255, 255), "Bottom margin")
+    }
+
+    @Test
+    fun wrapHeightRoundsUpToWholePoints() = runPdfTest {
+        val result = generateSuccessfully("contract-wrap-round.pdf") {
+            page(size = PageSize.wrapHeight(300.dp)) {
+                Box(Modifier.fillMaxWidth().height(100.3.dp).background(Color.Red))
+            }
+        }
+
+        assertPageSize(readBack(result, renderPages = false).pageSizesPt.single(), 300f, 101f, "Page with 100.3 pt of content")
+    }
+
+    @Test
+    fun emptyWrapHeightPageIsOnePointTall() = runPdfTest {
+        val result = generateSuccessfully("contract-wrap-empty.pdf") {
+            page(size = PageSize.wrapHeight(300.dp)) { }
+        }
+
+        assertPageSize(readBack(result, renderPages = false).pageSizesPt.single(), 300f, 1f, "Empty wrap-height page")
+    }
+
+    @Test
+    fun wrapHeightOverThePdfPageLimitFails() = runPdfTest {
+        val result = generate("contract-wrap-too-tall.pdf") {
+            page(size = PageSize.wrapHeight(300.dp)) {
+                Box(Modifier.fillMaxWidth().height(15_000.dp))
+            }
+        }
+
+        assertIs<PdfResult.Error.RenderingFailed>(result, "Expected content over 14,400 pt to fail, got $result")
+        assertTrue(result.message.contains("14400"), "Error should mention the page limit: ${result.message}")
+        assertFalse(outputExists("contract-wrap-too-tall.pdf"))
+    }
+
+    @Test
+    fun wrapHeightMeasuresLoadedContent() = runPdfTest {
+        val result = generateSuccessfully("contract-wrap-loading.pdf") {
+            page(size = PageSize.wrapHeight(300.dp)) {
+                var loaded by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    delay(300.milliseconds)
+                    loaded = true
+                }
+                PdfContentLoading(isLoading = !loaded)
+                Box(Modifier.fillMaxWidth().height(if (loaded) 250.dp else 50.dp).background(Color.Green))
+            }
+        }
+
+        assertPageSize(readBack(result, renderPages = false).pageSizesPt.single(), 300f, 250f, "Page sized after loading")
+    }
+
+    @Test
+    fun documentCanMixPageSizes() = runPdfTest {
+        val result = generateSuccessfully("contract-mixed-sizes.pdf") {
+            page { MarkerPage(PageMarkerColors[0]) }
+            page(size = PageSize.Letter) { MarkerPage(PageMarkerColors[1]) }
+            page(size = PageSize.wrapHeight(300.dp)) {
+                Box(Modifier.fillMaxWidth().height(150.dp).background(PageMarkerColors[2]))
+            }
+        }
+        val document = readBack(result)
+
+        assertEquals(3, document.pageSizesPt.size)
+        assertPageSize(document.pageSizesPt[0], 595f, 842f, "Page 1 (A4 from the config)")
+        assertPageSize(document.pageSizesPt[1], 612f, 792f, "Page 2 (Letter)")
+        assertPageSize(document.pageSizesPt[2], 300f, 150f, "Page 3 (wrap height)")
+        val markerPx = MARKER_CENTER_DP * RENDER_SCALE
+        assertColorAt(document.pages[0], markerPx, markerPx, PageMarkerColors[0].toRgb(), "Page 1 marker")
+        assertColorAt(document.pages[1], markerPx, markerPx, PageMarkerColors[1].toRgb(), "Page 2 marker")
+        assertColorAt(document.pages[2], document.pages[2].width / 2, document.pages[2].height / 2, PageMarkerColors[2].toRgb(), "Page 3 fill")
     }
 
     @Test

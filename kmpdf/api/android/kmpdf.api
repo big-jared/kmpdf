@@ -60,6 +60,7 @@ public final class io/github/bigboyapps/kmpdf/PageSize$Companion {
 	public final fun getLegal ()Lio/github/bigboyapps/kmpdf/PageSize;
 	public final fun getLetter ()Lio/github/bigboyapps/kmpdf/PageSize;
 	public final fun getTabloid ()Lio/github/bigboyapps/kmpdf/PageSize;
+	public final fun wrapHeight-0680j_4 (F)Lio/github/bigboyapps/kmpdf/PageSize;
 }
 
 public final class io/github/bigboyapps/kmpdf/PdfConfig {
@@ -124,6 +125,7 @@ public final class io/github/bigboyapps/kmpdf/PdfMargins$Companion {
 
 public final class io/github/bigboyapps/kmpdf/PdfPageScope {
 	public static final field $stable I
+	public final fun page (Lio/github/bigboyapps/kmpdf/PageSize;Lkotlin/jvm/functions/Function2;)V
 	public final fun page (Lkotlin/jvm/functions/Function2;)V
 }
 

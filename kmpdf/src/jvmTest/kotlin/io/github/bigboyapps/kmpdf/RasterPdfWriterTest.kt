@@ -27,9 +27,9 @@ class RasterPdfWriterTest {
 
     @Test
     fun writesCompressedAndUncompressedPagesThatPdfBoxCanRead() {
-        val writer = RasterPdfWriter(widthPt = 595f, heightPt = 842f)
-        writer.addPage(RasterPdfWriter.PageImage(width, height, zlib(pixels), flateCompressed = true))
-        writer.addPage(RasterPdfWriter.PageImage(width, height, pixels, flateCompressed = false))
+        val writer = RasterPdfWriter()
+        writer.addPage(RasterPdfWriter.PageImage(595f, 842f, width, height, zlib(pixels), flateCompressed = true))
+        writer.addPage(RasterPdfWriter.PageImage(595f, 842f, width, height, pixels, flateCompressed = false))
 
         Loader.loadPDF(writer.build()).use { document ->
             assertEquals(2, document.numberOfPages)
@@ -49,8 +49,8 @@ class RasterPdfWriterTest {
 
     @Test
     fun writesExactCrossReferenceOffsets() {
-        val writer = RasterPdfWriter(widthPt = 612f, heightPt = 792f)
-        writer.addPage(RasterPdfWriter.PageImage(width, height, pixels, flateCompressed = false))
+        val writer = RasterPdfWriter()
+        writer.addPage(RasterPdfWriter.PageImage(612f, 792f, width, height, pixels, flateCompressed = false))
         val bytes = writer.build()
         // PDFBox repairs broken xref tables silently, so check the offsets directly
         val text = String(bytes, Charsets.ISO_8859_1)
@@ -69,8 +69,8 @@ class RasterPdfWriterTest {
 
     @Test
     fun writesFractionalPageSizes() {
-        val writer = RasterPdfWriter(widthPt = 612.5f, heightPt = 792.25f)
-        writer.addPage(RasterPdfWriter.PageImage(width, height, pixels, flateCompressed = false))
+        val writer = RasterPdfWriter()
+        writer.addPage(RasterPdfWriter.PageImage(612.5f, 792.25f, width, height, pixels, flateCompressed = false))
 
         Loader.loadPDF(writer.build()).use { document ->
             assertEquals(612.5f, document.getPage(0).mediaBox.width)
@@ -79,16 +79,30 @@ class RasterPdfWriterTest {
     }
 
     @Test
+    fun eachPageKeepsItsOwnSize() {
+        val writer = RasterPdfWriter()
+        writer.addPage(RasterPdfWriter.PageImage(595f, 842f, width, height, pixels, flateCompressed = false))
+        writer.addPage(RasterPdfWriter.PageImage(400f, 123.5f, width, height, pixels, flateCompressed = false))
+
+        Loader.loadPDF(writer.build()).use { document ->
+            assertEquals(595f, document.getPage(0).mediaBox.width)
+            assertEquals(842f, document.getPage(0).mediaBox.height)
+            assertEquals(400f, document.getPage(1).mediaBox.width)
+            assertEquals(123.5f, document.getPage(1).mediaBox.height)
+        }
+    }
+
+    @Test
     fun rejectsDocumentWithoutPages() {
         assertFailsWith<IllegalArgumentException> {
-            RasterPdfWriter(widthPt = 595f, heightPt = 842f).build()
+            RasterPdfWriter().build()
         }
     }
 
     @Test
     fun rejectsUncompressedDataOfWrongSize() {
         assertFailsWith<IllegalArgumentException> {
-            RasterPdfWriter.PageImage(width, height, ByteArray(5), flateCompressed = false)
+            RasterPdfWriter.PageImage(595f, 842f, width, height, ByteArray(5), flateCompressed = false)
         }
     }
 

@@ -67,9 +67,11 @@ Shared validation rules, used by every platform's tests:
 **Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 18/18 contract tests, including the five readiness tests. Android uses a dedicated recomposer per page instead of fixed 200 ms and 100 ms delays. iOS now writes through a CoreGraphics PDF context, so suspending between pages never leaves UIKit's shared graphics context open. `apiCheck` shows only additions; the 1.2.0 `PdfConfig` signatures, including the no-argument constructor that adding a `Duration` property would otherwise remove, are kept as hidden overloads.
 
 ### 3. Wrap-content page height
-- [ ] `PageSize.wrapHeight(width)` (and a `WrapContent` height for individual pages) makes the page exactly as tall as its content plus the vertical margins.
-- [ ] Heights are rounded up to whole points, with a minimum of 1 pt. Content taller than 14,400 pt (the PDF page limit) returns `RenderingFailed` with a clear message instead of a truncated page.
-- [ ] Tests on every platform check the MediaBox height against the measured content height, compare pixels, and cover a 0-height page and an over-limit page.
+- [x] `PageSize.wrapHeight(width)`, used in `PdfConfig` or for individual pages with `page(size = ...)`, makes the page exactly as tall as its content plus the vertical margins. A document can mix page sizes.
+- [x] Heights are rounded up to whole points, with a minimum of 1 pt. Content taller than 14,400 pt (the PDF page limit) returns `RenderingFailed` with a clear message instead of a truncated page.
+- [x] Tests on every platform check the MediaBox height against the measured content height, compare pixels, and cover a 0-height page and an over-limit page.
+
+**Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 25/25 contract tests, including seven page-size tests: content-sized pages match the reference render, include vertical margins, round 100.3 pt of content up to 101 pt, make an empty page 1 pt tall, reject content over 14,400 pt without writing a file, measure content only after it finishes loading, and mix A4, Letter, and wrap-height pages in one document. Pages are measured in a planning step shared by every platform before they're rendered, and the web writer now supports a different size for each page. `apiCheck` shows only additions.
 
 ### 4. Automatic pagination
 - [ ] `pages(items, itemSpacing, header, footer) { item -> ... }` measures every item at the content width and fills pages in order, never splitting an item across pages.

@@ -96,3 +96,12 @@ fun OversizedContent() {
 }
 
 class TestPageException : RuntimeException("Test page content failed on purpose")
+
+/** Two stacked blocks: 123 dp of red, then 77 dp of blue, 200 dp tall in total. */
+@Composable
+fun StackedBlocks() {
+    Column {
+        Box(Modifier.fillMaxWidth().height(123.dp).background(Color.Red))
+        Box(Modifier.fillMaxWidth().height(77.dp).background(Color.Blue))
+    }
+}

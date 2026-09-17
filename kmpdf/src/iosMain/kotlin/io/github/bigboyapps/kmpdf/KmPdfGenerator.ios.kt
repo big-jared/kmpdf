@@ -106,26 +106,26 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 // Build pages
                 val pageScope = PdfPageScope()
                 pageScope.pages()
-                val pageContents = pageScope.pages
 
-                if (pageContents.isEmpty()) {
+                if (pageScope.pages.isEmpty()) {
                     return@withContext PdfResult.Error.Unknown("No pages defined")
                 }
 
-                // Page dimensions in points
-                val widthPt = config.pageSize.width.value.toDouble()
-                val heightPt = config.pageSize.height.value.toDouble()
-
-                config.margins.contentAreaError(widthPt.toFloat(), heightPt.toFloat())?.let { message ->
-                    return@withContext PdfResult.Error.Unknown(message)
+                val density = Density(PAGE_RENDER_SCALE)
+                val plannedPages = try {
+                    planPages(config, pageScope.pages) { content, widthPx ->
+                        measureContentHeightPx(content, widthPx, density, config.contentTimeout)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: PdfConfigException) {
+                    return@withContext PdfResult.Error.Unknown(e.message ?: "Invalid page configuration")
+                } catch (e: Exception) {
+                    logger.e(e) { "Failed to measure pages: ${e.message}" }
+                    return@withContext PdfResult.Error.RenderingFailed("Failed to measure pages: ${e.message}", e)
                 }
 
-                // Use 2x scale for rendering quality
-                val scale = 2.0
-                val widthPx = (widthPt * scale).toInt()
-                val heightPx = (heightPt * scale).toInt()
-
-                logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
+                logger.logDebug { "Rendering ${plannedPages.size} pages" }
 
                 val outputPath = outputPath(config.fileName)
                 // Pages go to a temporary file that replaces the output only once every page succeeds,
@@ -133,22 +133,23 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 val tempPath = "$outputPath.partial"
                 val fileManager = NSFileManager.defaultManager
 
-                val context = createPdfContext(tempPath, widthPt, heightPt)
+                val firstPage = plannedPages.first()
+                val context = createPdfContext(tempPath, firstPage.widthPt.toDouble(), firstPage.heightPt.toDouble())
                     ?: return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
 
                 var allPagesWritten = false
                 try {
                     // Render and write one page at a time so only one page image is in memory
-                    pageContents.forEachIndexed { index, pageContent ->
+                    plannedPages.forEachIndexed { index, plannedPage ->
                         ensureActive()
-                        logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
+                        logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }
 
                         val uiImage = try {
                             renderPage(
-                                { PageRoot(pageContent, config.margins) },
-                                widthPx,
-                                heightPx,
-                                scale,
+                                plannedPage.content,
+                                (plannedPage.widthPt * PAGE_RENDER_SCALE).toInt(),
+                                (plannedPage.heightPt * PAGE_RENDER_SCALE).toInt(),
+                                density,
                                 config.contentTimeout
                             )
                         } catch (e: CancellationException) {
@@ -162,7 +163,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
                         }
 
                         // CoreGraphics draws images upright with a bottom-left origin, matching PDF space
-                        val pageBounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
+                        val pageBounds = CGRectMake(0.0, 0.0, plannedPage.widthPt.toDouble(), plannedPage.heightPt.toDouble())
                         CGContextBeginPage(context, pageBounds)
                         CGContextDrawImage(context, pageBounds, uiImage.CGImage)
                         CGContextEndPage(context)
@@ -187,12 +188,12 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 val fileAttributes = fileManager.attributesOfItemAtPath(outputPath, error = null)
                 val fileSize = (fileAttributes?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
 
-                logger.logInfo { "PDF generation successful: $outputPath (${pageContents.size} pages, $fileSize bytes)" }
+                logger.logInfo { "PDF generation successful: $outputPath (${plannedPages.size} pages, $fileSize bytes)" }
                 PdfResult.Success(
                     uri = outputPath,
                     filePath = outputPath,
                     fileSize = fileSize,
-                    pageCount = pageContents.size
+                    pageCount = plannedPages.size
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -217,10 +218,10 @@ class IosKmPdfGenerator : KmPdfGenerator {
         content: @Composable () -> Unit,
         widthPx: Int,
         heightPx: Int,
-        scale: Double,
+        density: Density,
         contentTimeout: Duration
     ): UIImage {
-        val image = renderPageImage(content, widthPx, heightPx, Density(scale.toFloat()), contentTimeout)
+        val image = renderPageImage(content, widthPx, heightPx, density, contentTimeout)
         try {
             return image.toUIImage()
         } finally {

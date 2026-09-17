@@ -5,25 +5,27 @@ import kotlin.math.roundToInt
 /**
  * Minimal PDF writer that places one full-page RGB raster image on each page.
  *
- * Used by targets without a native PDF API (WASM). Image data is passed in already encoded
- * so each platform can use its own compressor.
+ * Used by targets without a native PDF API (WASM). Each page can have its own size. Image data is passed
+ * in already encoded so each platform can use its own compressor.
  */
-internal class RasterPdfWriter(
-    private val widthPt: Float,
-    private val heightPt: Float
-) {
+internal class RasterPdfWriter {
     /**
-     * A page image of 8-bit RGB samples, row by row from the top-left.
+     * A page and its image of 8-bit RGB samples, row by row from the top-left.
      *
+     * @property widthPt The page width in points.
+     * @property heightPt The page height in points.
      * @property data Raw RGB bytes, or zlib-compressed RGB bytes when [flateCompressed] is true.
      */
     class PageImage(
+        val widthPt: Float,
+        val heightPt: Float,
         val widthPx: Int,
         val heightPx: Int,
         val data: ByteArray,
         val flateCompressed: Boolean
     ) {
         init {
+            require(widthPt > 0f && heightPt > 0f) { "Page size must be positive, got $widthPt x $heightPt pt" }
             require(widthPx > 0 && heightPx > 0) { "Image dimensions must be positive" }
             require(flateCompressed || data.size == widthPx * heightPx * 3) {
                 "Uncompressed image data must contain exactly width * height * 3 bytes"
@@ -68,8 +70,6 @@ internal class RasterPdfWriter(
         out.writeBytes(byteArrayOf(0x25, 0xE2.toByte(), 0xE3.toByte(), 0xCF.toByte(), 0xD3.toByte(), 0x0A))
 
         // Object layout: 1 = catalog, 2 = page tree, then (page, content stream, image) per page
-        val width = formatNumber(widthPt)
-        val height = formatNumber(heightPt)
         val kids = pages.indices.joinToString(" ") { "${pageObjectNumber(it)} 0 R" }
 
         writeObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -79,6 +79,8 @@ internal class RasterPdfWriter(
             val pageNumber = pageObjectNumber(index)
             val contentNumber = pageNumber + 1
             val imageNumber = pageNumber + 2
+            val width = formatNumber(image.widthPt)
+            val height = formatNumber(image.heightPt)
 
             writeObject(
                 pageNumber,

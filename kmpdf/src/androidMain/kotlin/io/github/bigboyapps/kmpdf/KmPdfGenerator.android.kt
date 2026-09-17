@@ -197,32 +197,43 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
 
             val pageScope = PdfPageScope()
             pageScope.pages()
-            val pageContents = pageScope.pages
 
-            if (pageContents.isEmpty()) {
+            if (pageScope.pages.isEmpty()) {
                 return@withContext PdfResult.Error.Unknown("No pages defined")
             }
 
-            // PdfDocument only supports whole-point page sizes; round up so content is never cut off
-            val widthPt = ceil(config.pageSize.width.value).toInt()
-            val heightPt = ceil(config.pageSize.height.value).toInt()
-
-            config.margins.contentAreaError(widthPt.toFloat(), heightPt.toFloat())?.let { message ->
-                return@withContext PdfResult.Error.Unknown(message)
+            val plannedPages = try {
+                planPages(config, pageScope.pages) { content, widthPx ->
+                    var heightPx = 0
+                    renderPage({ MeasureContentHeight(content) { heightPx = it } }, widthPx, 1, config.contentTimeout)
+                        .recycle()
+                    heightPx
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PdfConfigException) {
+                return@withContext PdfResult.Error.Unknown(e.message ?: "Invalid page configuration")
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to measure pages: ${e.message}" }
+                return@withContext PdfResult.Error.RenderingFailed("Failed to measure pages: ${e.message}", e)
             }
-            val widthPx = (widthPt * RENDER_SCALE).toInt()
-            val heightPx = (heightPt * RENDER_SCALE).toInt()
 
-            logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
+            logger.logDebug { "Rendering ${plannedPages.size} pages" }
 
             val pdfDocument = PdfDocument()
             try {
                 // Render and add one page at a time so only one page bitmap is in memory
-                pageContents.forEachIndexed { index, pageContent ->
-                    logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
+                plannedPages.forEachIndexed { index, plannedPage ->
+                    logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }
+
+                    // PdfDocument only supports whole-point page sizes; round up so content is never cut off
+                    val widthPt = ceil(plannedPage.widthPt).toInt()
+                    val heightPt = ceil(plannedPage.heightPt).toInt()
+                    val widthPx = (widthPt * RENDER_SCALE).toInt()
+                    val heightPx = (heightPt * RENDER_SCALE).toInt()
 
                     val bitmap = try {
-                        renderPage({ PageRoot(pageContent, config.margins) }, widthPx, heightPx, config.contentTimeout)
+                        renderPage(plannedPage.content, widthPx, heightPx, config.contentTimeout)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: PdfRenderingException) {
@@ -244,7 +255,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 }
 
                 logger.logDebug { "All pages rendered, writing PDF" }
-                writePdf(context, config, pdfDocument, pageContents.size)
+                writePdf(context, config, pdfDocument, plannedPages.size)
             } finally {
                 pdfDocument.close()
             }

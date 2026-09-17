@@ -86,45 +86,41 @@ class WasmKmPdfGenerator : KmPdfGenerator {
 
         val pageScope = PdfPageScope()
         pageScope.pages()
-        val pageContents = pageScope.pages
 
-        if (pageContents.isEmpty()) {
+        if (pageScope.pages.isEmpty()) {
             return PdfResult.Error.Unknown("No pages provided")
         }
 
-        // Page dimensions in points
-        val widthPt = config.pageSize.width.value
-        val heightPt = config.pageSize.height.value
-
-        config.margins.contentAreaError(widthPt, heightPt)?.let { message ->
-            return PdfResult.Error.Unknown(message)
+        val density = Density(PAGE_RENDER_SCALE)
+        val plannedPages = try {
+            planPages(config, pageScope.pages) { content, widthPx ->
+                measureContentHeightPx(content, widthPx, density, config.contentTimeout)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: PdfConfigException) {
+            return PdfResult.Error.Unknown(e.message ?: "Invalid page configuration")
+        } catch (e: Throwable) {
+            logger.e(e) { "Failed to measure pages: ${e.message}" }
+            return PdfResult.Error.RenderingFailed("Failed to measure pages: ${e.message}", e)
         }
-
-        // Use 2x scale for rendering quality
-        val scale = 2f
-        val pageWidthPx = (widthPt * scale).toInt()
-        val pageHeightPx = (heightPt * scale).toInt()
 
         val compress = isCompressionStreamSupported()
         if (!compress) {
             logger.w { "CompressionStream is unavailable; page images will be stored uncompressed" }
         }
 
-        logger.logDebug { "Page size: ${widthPt}x${heightPt}pt (${pageWidthPx}x${pageHeightPx}px at ${scale}x)" }
+        logger.logDebug { "Rendering ${plannedPages.size} pages" }
 
-        val writer = RasterPdfWriter(widthPt, heightPt)
+        val writer = RasterPdfWriter()
 
-        pageContents.forEachIndexed { index, pageContent ->
-            logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
+        plannedPages.forEachIndexed { index, plannedPage ->
+            logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }
+            val pageWidthPx = (plannedPage.widthPt * PAGE_RENDER_SCALE).toInt()
+            val pageHeightPx = (plannedPage.heightPt * PAGE_RENDER_SCALE).toInt()
 
             val rgb = try {
-                renderPageToRgb(
-                    { PageRoot(pageContent, config.margins) },
-                    pageWidthPx,
-                    pageHeightPx,
-                    Density(scale),
-                    config.contentTimeout
-                )
+                renderPageToRgb(plannedPage.content, pageWidthPx, pageHeightPx, density, config.contentTimeout)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -141,7 +137,16 @@ class WasmKmPdfGenerator : KmPdfGenerator {
                 return PdfResult.Error.IOError("Failed to compress page ${index + 1}: ${e.message}", e)
             }
 
-            writer.addPage(RasterPdfWriter.PageImage(pageWidthPx, pageHeightPx, data, flateCompressed = compress))
+            writer.addPage(
+                RasterPdfWriter.PageImage(
+                    widthPt = plannedPage.widthPt,
+                    heightPt = plannedPage.heightPt,
+                    widthPx = pageWidthPx,
+                    heightPx = pageHeightPx,
+                    data = data,
+                    flateCompressed = compress
+                )
+            )
         }
 
         return try {

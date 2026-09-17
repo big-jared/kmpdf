@@ -12,9 +12,9 @@ class PdfStructureTest {
     private val pixels = ByteArray(2 * 3 * 3) { it.toByte() }
 
     private fun validPdf(): ByteArray {
-        val writer = RasterPdfWriter(widthPt = 612.5f, heightPt = 792.25f)
-        writer.addPage(RasterPdfWriter.PageImage(2, 3, pixels, flateCompressed = false))
-        writer.addPage(RasterPdfWriter.PageImage(2, 3, pixels, flateCompressed = false))
+        val writer = RasterPdfWriter()
+        writer.addPage(RasterPdfWriter.PageImage(612.5f, 792.25f, 2, 3, pixels, flateCompressed = false))
+        writer.addPage(RasterPdfWriter.PageImage(612.5f, 792.25f, 2, 3, pixels, flateCompressed = false))
         return writer.build()
     }
 

@@ -55,3 +55,15 @@ internal suspend fun renderPageImage(
         scene.close()
     }
 }
+
+/** Measures how tall [content] is at [widthPx] with no height limit, once it's ready. */
+internal suspend fun measureContentHeightPx(
+    content: @Composable () -> Unit,
+    widthPx: Int,
+    density: Density,
+    contentTimeout: Duration
+): Int {
+    var heightPx = 0
+    renderPageImage({ MeasureContentHeight(content) { heightPx = it } }, widthPx, 1, density, contentTimeout).close()
+    return heightPx
+}

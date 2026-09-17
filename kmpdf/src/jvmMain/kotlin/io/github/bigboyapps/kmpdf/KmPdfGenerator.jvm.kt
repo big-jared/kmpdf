@@ -43,27 +43,28 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
             // Build page list
             val pageScope = PdfPageScope()
             pageScope.pages()
-            val pageContents = pageScope.pages
 
-            if (pageContents.isEmpty()) {
+            if (pageScope.pages.isEmpty()) {
                 return@withContext PdfResult.Error.Unknown("No pages provided")
             }
 
-            // Page dimensions in points
-            val widthPt = config.pageSize.width.value
-            val heightPt = config.pageSize.height.value
-
-            config.margins.contentAreaError(widthPt, heightPt)?.let { message ->
-                return@withContext PdfResult.Error.Unknown(message)
+            val density = Density(PAGE_RENDER_SCALE)
+            val plannedPages = try {
+                planPages(config, pageScope.pages) { content, widthPx ->
+                    withContext(Dispatchers.Main) {
+                        measureContentHeightPx(content, widthPx, density, config.contentTimeout)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PdfConfigException) {
+                return@withContext PdfResult.Error.Unknown(e.message ?: "Invalid page configuration")
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to measure pages: ${e.message}" }
+                return@withContext PdfResult.Error.RenderingFailed("Failed to measure pages: ${e.message}", e)
             }
 
-            // Use 2x scale for rendering quality
-            val scale = 2f
-            val pageWidthPx = (widthPt * scale).toInt()
-            val pageHeightPx = (heightPt * scale).toInt()
-
-            logger.logDebug { "Page size: ${widthPt}x${heightPt}pt (${pageWidthPx}x${pageHeightPx}px at ${scale}x)" }
-            logger.logDebug { "Rendering ${pageContents.size} pages" }
+            logger.logDebug { "Rendering ${plannedPages.size} pages" }
 
             // Create PDF
             withContext(Dispatchers.IO) {
@@ -71,15 +72,15 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
 
                 try {
                     // Render each page
-                    pageContents.forEachIndexed { index, pageContent ->
-                        logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
+                    plannedPages.forEachIndexed { index, plannedPage ->
+                        logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }
 
                         val bufferedImage = try {
                             renderComposableToBufferedImage(
-                                content = { PageRoot(pageContent, config.margins) },
-                                width = pageWidthPx,
-                                height = pageHeightPx,
-                                density = Density(scale),
+                                content = plannedPage.content,
+                                width = (plannedPage.widthPt * PAGE_RENDER_SCALE).toInt(),
+                                height = (plannedPage.heightPt * PAGE_RENDER_SCALE).toInt(),
+                                density = density,
                                 contentTimeout = config.contentTimeout
                             )
                         } catch (e: CancellationException) {
@@ -93,7 +94,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
                         }
 
                         // Create PDF page
-                        val page = PDPage(PDRectangle(widthPt, heightPt))
+                        val page = PDPage(PDRectangle(plannedPage.widthPt, plannedPage.heightPt))
                         document.addPage(page)
 
                         val pdImage = LosslessFactory.createFromImage(document, bufferedImage)
@@ -104,8 +105,8 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
                                 pdImage,
                                 0f,
                                 0f,
-                                widthPt,
-                                heightPt
+                                plannedPage.widthPt,
+                                plannedPage.heightPt
                             )
                         }
                     }
@@ -123,12 +124,12 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
 
                     val fileSize = outputFile.length()
 
-                    logger.logInfo { "PDF generation successful: ${outputFile.absolutePath} (${pageContents.size} pages, $fileSize bytes)" }
+                    logger.logInfo { "PDF generation successful: ${outputFile.absolutePath} (${plannedPages.size} pages, $fileSize bytes)" }
                     PdfResult.Success(
                         uri = outputFile.absolutePath,
                         filePath = outputFile.absolutePath,
                         fileSize = fileSize,
-                        pageCount = pageContents.size
+                        pageCount = plannedPages.size
                     )
                 } catch (e: CancellationException) {
                     throw e

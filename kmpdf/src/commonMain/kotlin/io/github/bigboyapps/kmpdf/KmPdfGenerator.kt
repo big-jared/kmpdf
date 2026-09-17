@@ -64,7 +64,8 @@ internal inline fun Logger.logInfo(message: () -> String) {
  * as Dp for convenience. These are the standard PDF page dimensions, not screen pixels.
  *
  * @property width The width of the page in points.
- * @property height The height of the page in points.
+ * @property height The height of the page in points, or [Dp.Unspecified] for a page that's as tall as
+ *                  its content (see [wrapHeight]).
  */
 data class PageSize(
     val width: Dp,
@@ -88,28 +89,50 @@ data class PageSize(
 
         /** Tabloid page size (11" × 17") */
         val Tabloid = PageSize(width = 792.dp, height = 1224.dp)
+
+        /**
+         * A page of the given width that's exactly as tall as its content plus the vertical margins,
+         * rounded up to whole points. Useful for receipts, tickets, and single long pages.
+         *
+         * Content taller than 14,400 points (the largest page a PDF can have) makes generation return
+         * [PdfResult.Error.RenderingFailed].
+         */
+        fun wrapHeight(width: Dp): PageSize = PageSize(width = width, height = Dp.Unspecified)
     }
 }
 
 /**
- * Defines a single page in a PDF document.
+ * Defines the pages of a PDF document.
  *
- * Each PdfPage renders its content exactly as provided, with no automatic pagination.
+ * Each page renders its content exactly as provided, with no automatic pagination.
  * The user is responsible for ensuring content fits within the page dimensions.
  */
 class PdfPageScope internal constructor() {
-    internal val pages = mutableListOf<@Composable () -> Unit>()
+    internal val pages = mutableListOf<PageSpec>()
 
     /**
-     * Adds a page to the PDF document.
+     * Adds a page to the PDF document, sized by [PdfConfig.pageSize].
      *
      * @param content The composable content for this page. Content should be sized to fit
      *                within the page dimensions specified in PdfConfig.
      */
     fun page(content: @Composable () -> Unit) {
-        pages.add(content)
+        pages.add(PageSpec(size = null, content = content))
+    }
+
+    /**
+     * Adds a page with its own size instead of [PdfConfig.pageSize], so one document can mix page sizes.
+     *
+     * @param size The page size. Use [PageSize.wrapHeight] for a page that's as tall as its content.
+     * @param content The composable content for this page.
+     */
+    fun page(size: PageSize, content: @Composable () -> Unit) {
+        pages.add(PageSpec(size = size, content = content))
     }
 }
+
+/** A page requested with [PdfPageScope.page], before its size is resolved. */
+internal class PageSpec(val size: PageSize?, val content: @Composable () -> Unit)
 
 /**
  * Space between the edges of each page and its content, in points (1 point = 1/72 inch).
@@ -156,7 +179,8 @@ data class PdfMargins(
 /**
  * Configuration for PDF generation.
  *
- * @property pageSize The size of each page in the PDF. Defaults to A4.
+ * @property pageSize The size of each page in the PDF, unless a page sets its own. Defaults to A4.
+ *                  Use [PageSize.wrapHeight] for pages that are as tall as their content.
  * @property fileName The name of the generated PDF file. Defaults to "document.pdf".
  * @property outputDirectory The directory path where the PDF will be saved.
  *                          Defaults to platform-specific location. On Desktop/JVM, defaults to "~/Documents/pdfs/".
