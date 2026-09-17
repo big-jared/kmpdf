@@ -110,6 +110,48 @@ class PdfPageScope internal constructor() {
 }
 
 /**
+ * Space between the edges of each page and its content, in points (1 point = 1/72 inch).
+ *
+ * Page content is laid out inside the margins and clipped to them. Like [PageSize], values are
+ * points represented as Dp.
+ *
+ * @throws IllegalArgumentException if any margin is negative or unspecified.
+ */
+data class PdfMargins(
+    val left: Dp = 0.dp,
+    val top: Dp = 0.dp,
+    val right: Dp = 0.dp,
+    val bottom: Dp = 0.dp
+) {
+    init {
+        require(left.value >= 0f && top.value >= 0f && right.value >= 0f && bottom.value >= 0f) {
+            "Margins must be zero or positive, got $this"
+        }
+    }
+
+    companion object {
+        /** No margins: content fills the whole page. */
+        val None = PdfMargins()
+
+        /** 0.5 inch on every side. */
+        val Narrow = all(36.dp)
+
+        /** 1 inch on every side. */
+        val Normal = all(72.dp)
+
+        /** 1 inch at the top and bottom, 2 inches on the left and right. */
+        val Wide = PdfMargins(left = 144.dp, top = 72.dp, right = 144.dp, bottom = 72.dp)
+
+        /** The same margin on every side. */
+        fun all(margin: Dp) = PdfMargins(margin, margin, margin, margin)
+
+        /** The same margin on the left and right, and on the top and bottom. */
+        fun symmetric(horizontal: Dp = 0.dp, vertical: Dp = 0.dp) =
+            PdfMargins(left = horizontal, top = vertical, right = horizontal, bottom = vertical)
+    }
+}
+
+/**
  * Configuration for PDF generation.
  *
  * @property pageSize The size of each page in the PDF. Defaults to A4.
@@ -117,12 +159,31 @@ class PdfPageScope internal constructor() {
  * @property outputDirectory The directory path where the PDF will be saved.
  *                          Defaults to platform-specific location. On Desktop/JVM, defaults to "~/Documents/pdfs/".
  *                          Ignored on Android and iOS which use platform-specific directories.
+ * @property margins Space between the page edges and the content. Defaults to [PdfMargins.None].
+ *                   Margins that leave no room for content make generation return an error.
  */
 data class PdfConfig(
     val pageSize: PageSize = PageSize.A4,
     val fileName: String = "document.pdf",
-    val outputDirectory: String? = null
-)
+    val outputDirectory: String? = null,
+    val margins: PdfMargins = PdfMargins.None
+) {
+    /** Keeps apps compiled against KmPDF 1.2.0 and earlier working. */
+    @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
+    constructor(
+        pageSize: PageSize = PageSize.A4,
+        fileName: String = "document.pdf",
+        outputDirectory: String? = null
+    ) : this(pageSize, fileName, outputDirectory, PdfMargins.None)
+
+    /** Keeps apps compiled against KmPDF 1.2.0 and earlier working. */
+    @Deprecated("Kept for binary compatibility", level = DeprecationLevel.HIDDEN)
+    fun copy(
+        pageSize: PageSize = this.pageSize,
+        fileName: String = this.fileName,
+        outputDirectory: String? = this.outputDirectory
+    ): PdfConfig = PdfConfig(pageSize, fileName, outputDirectory, margins)
+}
 
 /**
  * Generator for creating PDF documents from Compose UI content.

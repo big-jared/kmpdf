@@ -96,6 +96,10 @@ class WasmKmPdfGenerator : KmPdfGenerator {
         val widthPt = config.pageSize.width.value
         val heightPt = config.pageSize.height.value
 
+        config.margins.contentAreaError(widthPt, heightPt)?.let { message ->
+            return PdfResult.Error.Unknown(message)
+        }
+
         // Use 2x scale for rendering quality
         val scale = 2f
         val pageWidthPx = (widthPt * scale).toInt()
@@ -114,7 +118,7 @@ class WasmKmPdfGenerator : KmPdfGenerator {
             logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
             val rgb = try {
-                renderPageToRgb(pageContent, pageWidthPx, pageHeightPx, Density(scale))
+                renderPageToRgb({ PageRoot(pageContent, config.margins) }, pageWidthPx, pageHeightPx, Density(scale))
             } catch (e: Throwable) {
                 logger.e(e) { "Failed to render page ${index + 1}: ${e.message}" }
                 return PdfResult.Error.RenderingFailed("Failed to render page ${index + 1}: ${e.message}", e)
@@ -160,7 +164,7 @@ class WasmKmPdfGenerator : KmPdfGenerator {
             width = width,
             height = height,
             density = density,
-            content = { PageRoot(content) }
+            content = content
         )
         val image = try {
             scene.render()

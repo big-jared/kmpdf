@@ -207,6 +207,10 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             // PdfDocument only supports whole-point page sizes; round up so content is never cut off
             val widthPt = ceil(config.pageSize.width.value).toInt()
             val heightPt = ceil(config.pageSize.height.value).toInt()
+
+            config.margins.contentAreaError(widthPt.toFloat(), heightPt.toFloat())?.let { message ->
+                return@withContext PdfResult.Error.Unknown(message)
+            }
             val widthPx = (widthPt * RENDER_SCALE).toInt()
             val heightPx = (heightPt * RENDER_SCALE).toInt()
 
@@ -219,7 +223,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                     logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                     val bitmap = try {
-                        renderPage(pageContent, widthPx, heightPx)
+                        renderPage({ PageRoot(pageContent, config.margins) }, widthPx, heightPx)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: PdfRenderingException) {
@@ -305,7 +309,7 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             composeView = ComposeView(activity).apply {
                 setContent {
                     CompositionLocalProvider(LocalDensity provides Density(RENDER_SCALE)) {
-                        PageRoot(pageContent)
+                        pageContent()
                     }
                 }
                 alpha = 0f

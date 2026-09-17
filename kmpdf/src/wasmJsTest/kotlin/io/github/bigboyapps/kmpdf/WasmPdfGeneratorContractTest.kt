@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalWasmJsInterop::class)
+
 package io.github.bigboyapps.kmpdf
 
 import androidx.compose.runtime.Composable

@@ -53,6 +53,10 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
             val widthPt = config.pageSize.width.value
             val heightPt = config.pageSize.height.value
 
+            config.margins.contentAreaError(widthPt, heightPt)?.let { message ->
+                return@withContext PdfResult.Error.Unknown(message)
+            }
+
             // Use 2x scale for rendering quality
             val scale = 2f
             val pageWidthPx = (widthPt * scale).toInt()
@@ -72,7 +76,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
 
                         val bufferedImage = try {
                             renderComposableToBufferedImage(
-                                content = pageContent,
+                                content = { PageRoot(pageContent, config.margins) },
                                 width = pageWidthPx,
                                 height = pageHeightPx,
                                 density = Density(scale)
@@ -148,7 +152,7 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
             width = width,
             height = height,
             density = density,
-            content = { PageRoot(content) }
+            content = content
         )
 
         try {

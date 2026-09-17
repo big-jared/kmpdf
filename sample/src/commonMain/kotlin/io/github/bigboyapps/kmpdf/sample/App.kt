@@ -41,6 +41,7 @@ fun SampleScreen() {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedPageSize by remember { mutableStateOf(PageSize.A4) }
+    var selectedMargins by remember { mutableStateOf(PdfMargins.None) }
     var selectedSample by remember { mutableStateOf(SampleType.DEFAULT) }
 
     Column(
@@ -96,6 +97,25 @@ fun SampleScreen() {
                     }
                 }
 
+                Text("Margins")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "None" to PdfMargins.None,
+                        "Narrow" to PdfMargins.Narrow,
+                        "Normal" to PdfMargins.Normal,
+                        "Wide" to PdfMargins.Wide
+                    ).forEach { (name, margins) ->
+                        FilterChip(
+                            selected = selectedMargins == margins,
+                            onClick = { selectedMargins = margins },
+                            label = { Text(name) }
+                        )
+                    }
+                }
+
                 Text("Sample Type")
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -127,7 +147,8 @@ fun SampleScreen() {
                     when (val result = generator.generatePdf(
                         config = PdfConfig(
                             pageSize = selectedPageSize,
-                            fileName = "sample_${getCurrentTimestamp()}.pdf"
+                            fileName = "sample_${getCurrentTimestamp()}.pdf",
+                            margins = selectedMargins
                         )
                     ) {
                         when (selectedSample) {

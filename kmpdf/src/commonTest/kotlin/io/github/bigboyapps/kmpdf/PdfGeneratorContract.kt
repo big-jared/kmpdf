@@ -1,6 +1,12 @@
 package io.github.bigboyapps.kmpdf
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.absolutePadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import io.github.bigboyapps.kmpdf.testing.DetailedContent
 import io.github.bigboyapps.kmpdf.testing.MARKER_CENTER_DP
@@ -55,6 +61,10 @@ abstract class PdfGeneratorContract {
     /** Renders [content] directly, without a PDF, at the given pixel size and [RENDER_SCALE] density. */
     protected abstract suspend fun renderReference(content: @Composable () -> Unit, widthPx: Int, heightPx: Int): RgbaImage
 
+    /** A reference render composited onto white, the way every PDF page shows it. */
+    private suspend fun referenceOnWhite(content: @Composable () -> Unit, widthPx: Int, heightPx: Int): RgbaImage =
+        renderReference(content, widthPx, heightPx).flattenedOnWhite()
+
     /** Whether a PDF with [fileName] exists where the generator writes its output. */
     protected abstract fun outputExists(fileName: String): Boolean
 
@@ -82,7 +92,7 @@ abstract class PdfGeneratorContract {
         val result = generateSuccessfully("contract-detailed.pdf") { page { DetailedContent() } }
         val page = readBack(result).pages.single()
 
-        assertPixelsMatch(renderReference({ DetailedContent() }, page.width, page.height), page, "Detailed content")
+        assertPixelsMatch(referenceOnWhite({ DetailedContent() }, page.width, page.height), page, "Detailed content")
     }
 
     @Test
@@ -91,17 +101,17 @@ abstract class PdfGeneratorContract {
         val page = readBack(result).pages.single()
 
         assertPixelsDiffer(
-            renderReference({ DetailedContent(shift = 4.dp) }, page.width, page.height),
+            referenceOnWhite({ DetailedContent(shift = 4.dp) }, page.width, page.height),
             page,
             "Content shifted by 4 dp"
         )
         assertPixelsDiffer(
-            renderReference({ DetailedContent(accent = Color(0xFFD81B60)) }, page.width, page.height),
+            referenceOnWhite({ DetailedContent(accent = Color(0xFFD81B60)) }, page.width, page.height),
             page,
             "Different accent color"
         )
         assertPixelsDiffer(
-            renderReference({ DetailedContent(text = "KmPDF 0123456788") }, page.width, page.height),
+            referenceOnWhite({ DetailedContent(text = "KmPDF 0123456788") }, page.width, page.height),
             page,
             "One changed character"
         )
@@ -152,7 +162,7 @@ abstract class PdfGeneratorContract {
 
         val corner = page.pixel(page.width - 10, page.height - 10)
         assertTrue(corner.distanceTo(Rgb(255, 255, 255)) <= COLOR_TOLERANCE, "Uncovered area should be white, was $corner")
-        assertPixelsMatch(renderReference({ TransparentContent() }, page.width, page.height).flattenedOnWhite(), page, "Transparent content")
+        assertPixelsMatch(referenceOnWhite({ TransparentContent() }, page.width, page.height), page, "Transparent content")
     }
 
     @Test
@@ -164,7 +174,7 @@ abstract class PdfGeneratorContract {
         val (expectedWidth, expectedHeight) = expectedPageSizePt(PageSize.Letter.width.value, PageSize.Letter.height.value)
         assertTrue(abs(width - expectedWidth) <= SIZE_TOLERANCE_PT && abs(height - expectedHeight) <= SIZE_TOLERANCE_PT)
         val page = document.pages.single()
-        assertPixelsMatch(renderReference({ OversizedContent() }, page.width, page.height), page, "Oversized content")
+        assertPixelsMatch(referenceOnWhite({ OversizedContent() }, page.width, page.height), page, "Oversized content")
     }
 
     @Test
@@ -215,6 +225,77 @@ abstract class PdfGeneratorContract {
     }
 
     @Test
+    fun marginsInsetContentOnEverySide() = runPdfTest {
+        val margins = PdfMargins(left = 36.dp, top = 72.dp, right = 54.dp, bottom = 90.dp)
+        val result = createGenerator().generatePdf(config("contract-margins.pdf").copy(margins = margins)) {
+            page { Box(Modifier.fillMaxSize().background(Color.Red)) }
+        }
+        assertIs<PdfResult.Success>(result, "Expected a PDF with margins, got $result")
+        val page = readBack(result).pages.single()
+
+        val left = 36 * RENDER_SCALE
+        val top = 72 * RENDER_SCALE
+        val right = page.width - 54 * RENDER_SCALE
+        val bottom = page.height - 90 * RENDER_SCALE
+        val midX = page.width / 2
+        val midY = page.height / 2
+        val white = Rgb(255, 255, 255)
+        val red = Rgb(255, 0, 0)
+        fun assertColor(x: Int, y: Int, expected: Rgb, where: String) {
+            val actual = page.pixel(x, y)
+            assertTrue(actual.distanceTo(expected) <= COLOR_TOLERANCE, "$where at ($x, $y) should be $expected but was $actual")
+        }
+
+        assertColor(left - EDGE_OFFSET_PX, midY, white, "Left margin")
+        assertColor(left + EDGE_OFFSET_PX, midY, red, "Content at the left margin")
+        assertColor(midX, top - EDGE_OFFSET_PX, white, "Top margin")
+        assertColor(midX, top + EDGE_OFFSET_PX, red, "Content at the top margin")
+        assertColor(right + EDGE_OFFSET_PX, midY, white, "Right margin")
+        assertColor(right - EDGE_OFFSET_PX, midY, red, "Content at the right margin")
+        assertColor(midX, bottom + EDGE_OFFSET_PX, white, "Bottom margin")
+        assertColor(midX, bottom - EDGE_OFFSET_PX, red, "Content at the bottom margin")
+        assertColor(5, 5, white, "Top-left corner")
+        assertColor(page.width - 5, page.height - 5, white, "Bottom-right corner")
+    }
+
+    @Test
+    fun marginsMatchReferenceAndClipContent() = runPdfTest {
+        val margins = PdfMargins.Normal
+        val result = createGenerator().generatePdf(config("contract-margins-detailed.pdf").copy(margins = margins)) {
+            page { OversizedContent() }
+        }
+        assertIs<PdfResult.Success>(result, "Expected a PDF with margins, got $result")
+        val page = readBack(result).pages.single()
+
+        val reference = referenceOnWhite(
+            {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .absolutePadding(margins.left, margins.top, margins.right, margins.bottom)
+                        .clipToBounds()
+                ) { OversizedContent() }
+            },
+            page.width,
+            page.height
+        )
+        assertPixelsMatch(reference, page, "Oversized content inside Normal margins")
+    }
+
+    @Test
+    fun marginsWithoutRoomForContentFail() = runPdfTest {
+        val result = createGenerator().generatePdf(
+            config("contract-no-room.pdf").copy(margins = PdfMargins.symmetric(horizontal = 300.dp))
+        ) {
+            page { MarkerPage(PageMarkerColors[0]) }
+        }
+
+        assertIs<PdfResult.Error>(result, "Expected an error for margins wider than the page, got $result")
+        assertTrue(result.message.contains("Margins"), "Error should explain the margins problem: ${result.message}")
+        assertFalse(outputExists("contract-no-room.pdf"))
+    }
+
+    @Test
     fun thirtyPageDocument() = runPdfTest {
         val result = generateSuccessfully("contract-thirty.pdf") {
             repeat(30) { i -> page { MarkerPage(PageMarkerColors[i % PageMarkerColors.size]) } }
@@ -228,6 +309,9 @@ abstract class PdfGeneratorContract {
         const val RENDER_SCALE = 2
         private const val COLOR_TOLERANCE = 12
         private const val SIZE_TOLERANCE_PT = 0.01f
+
+        /** How far from a margin edge to sample, so resampling at the edge itself doesn't matter. */
+        private const val EDGE_OFFSET_PX = 3
 
         private fun Color.toRgb() = Rgb((red * 255 + 0.5f).toInt(), (green * 255 + 0.5f).toInt(), (blue * 255 + 0.5f).toInt())
     }

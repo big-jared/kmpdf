@@ -115,6 +115,10 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 val widthPt = config.pageSize.width.value.toDouble()
                 val heightPt = config.pageSize.height.value.toDouble()
 
+                config.margins.contentAreaError(widthPt.toFloat(), heightPt.toFloat())?.let { message ->
+                    return@withContext PdfResult.Error.Unknown(message)
+                }
+
                 // Use 2x scale for rendering quality
                 val scale = 2.0
                 val widthPx = (widthPt * scale).toInt()
@@ -142,7 +146,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
                         logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
 
                         val uiImage = try {
-                            renderPage(pageContent, widthPx, heightPx, scale)
+                            renderPage({ PageRoot(pageContent, config.margins) }, widthPx, heightPx, scale)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -220,7 +224,7 @@ class IosKmPdfGenerator : KmPdfGenerator {
             width = widthPx,
             height = heightPx,
             density = Density(scale.toFloat()),
-            content = { PageRoot(content) }
+            content = content
         )
         try {
             val image = scene.render()

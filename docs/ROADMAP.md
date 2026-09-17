@@ -47,10 +47,12 @@ Shared validation rules, used by every platform's tests:
 - On Android, page content that threw escaped `generatePdf` (crashing the caller) and was retried as if the Activity had been recreated.
 
 ### 1. Margins
-- [ ] `PdfConfig(margins = PdfMargins(...))` with presets `None` (default), `Narrow`, `Normal`, and `Wide`, plus custom per-side values.
-- [ ] Content is laid out in the page minus the margins. Pixel tests on every platform check that the margin bands are white and the content starts exactly at the margin offset.
-- [ ] Negative margins, or margins that leave no content area, are rejected with a clear error.
-- [ ] The sample no longer advertises anything the library doesn't do.
+- [x] `PdfConfig(margins = PdfMargins(...))` with presets `None` (default), `Narrow`, `Normal`, and `Wide`, plus custom per-side values.
+- [x] Content is laid out in the page minus the margins. Pixel tests on every platform check that the margin bands are white and the content starts exactly at the margin offset.
+- [x] Negative margins, or margins that leave no content area, are rejected with a clear error.
+- [x] The sample no longer advertises anything the library doesn't do.
+
+**Verified:** JVM, iOS simulator, Web (headless Chrome), and Android (Pixel 8a) each pass 13/13 contract tests, including three margin tests: every margin band is white with content starting at the margin edge, margin content matches the reference render and is clipped, and margins with no room for content fail without writing a file. `PdfMarginsTest` (presets, factories, validation) passes 5/5 on every platform. `apiCheck` only shows additions; the previous `PdfConfig` constructor and `copy` signatures are kept as hidden overloads, so apps built against 1.2.0 still link.
 
 ### 2. Content readiness (async content)
 - [ ] Before capturing a page, rendering waits until composition settles (no pending recompositions or effects) instead of capturing the first frame or waiting a fixed delay.
