@@ -62,7 +62,6 @@ internal inline fun Logger.logInfo(message: () -> String) {
  *
  * Note: The width and height values are in points (1 point = 1/72 inch), though represented
  * as Dp for convenience. These are the standard PDF page dimensions, not screen pixels.
- * Android's PdfDocument only supports whole points, so on Android fractional sizes round up.
  *
  * @property width The width of the page in points.
  * @property height The height of the page in points, or [Dp.Unspecified] for a page that's as tall as
@@ -331,9 +330,9 @@ interface KmPdfGenerator {
     /**
      * Generates a PDF document from the provided pages.
      *
-     * Each page is rendered independently at the exact page size specified in the config.
-     * No automatic pagination or margins are applied - the user is responsible for
-     * ensuring content fits within page boundaries.
+     * Each page is rendered as an image at the page's size, with the text from its `Text` and
+     * `BasicText` composables written invisibly over it, so the text can be selected, searched, and copied.
+     * Use [PdfPageScope.pages] to paginate a list of items automatically.
      *
      * @param config Configuration for the PDF generation, including page size and output file name.
      * @param pages Builder function for defining pages using [PdfPageScope.page].

@@ -149,13 +149,14 @@ kotlin {
 
         jvmMain.dependencies {
             implementation(compose.desktop.common)
-            implementation(libs.pdfbox)
             implementation(libs.kotlinx.coroutines.swing)
         }
 
         jvmTest.dependencies {
             // Skia native runtime, needed to render pages in tests
             implementation(compose.desktop.currentOs)
+            // An independent PDF implementation to read generated PDFs back
+            implementation(libs.pdfbox)
         }
 
         wasmJsMain.dependencies {

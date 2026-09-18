@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.view.View
 import android.view.ViewGroup
@@ -27,7 +28,6 @@ import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.math.ceil
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.time.Duration.Companion.minutes
@@ -62,19 +62,16 @@ class AndroidPdfGeneratorContractTest : PdfGeneratorContract() {
 
     override fun createGenerator(): KmPdfGenerator = AndroidKmPdfGenerator()
 
-    // Android's PdfDocument only supports whole-point page sizes, so fractional sizes round up
-    override fun expectedPageSizePt(width: Float, height: Float): Pair<Float, Float> =
-        ceil(width) to ceil(height)
-
     override suspend fun readBack(result: PdfResult.Success, renderPages: Boolean): ReadBackDocument =
         withContext(Dispatchers.IO) {
             ParcelFileDescriptor.open(File(result.filePath), ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                 PdfRenderer(descriptor).use { renderer ->
-                    val sizes = mutableListOf<Pair<Float, Float>>()
+                    // PdfRenderer reports page sizes in whole points, so exact sizes come from the strict reader
+                    val sizes = PdfStructure.parse(File(result.filePath).readBytes()).pages.map { it.widthPt to it.heightPt }
+                    check(sizes.size == renderer.pageCount) { "PdfRenderer and the strict reader disagree on the page count" }
                     val pages = mutableListOf<RgbaImage>()
                     for (index in 0 until renderer.pageCount) {
                         renderer.openPage(index).use { page ->
-                            sizes += page.width.toFloat() to page.height.toFloat()
                             if (renderPages) {
                                 val width = page.width * RENDER_SCALE
                                 val height = page.height * RENDER_SCALE
@@ -131,7 +128,6 @@ class AndroidPdfGeneratorContractTest : PdfGeneratorContract() {
 
     override fun outputExists(fileName: String): Boolean = File(pdfDirectory, fileName).exists()
 
-    // The strict reader validates the appended update's cross-reference table and offsets
     override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
         PdfStructure.parse(readPdfBytes(result.uri)).info
 
@@ -145,6 +141,22 @@ class AndroidPdfGeneratorContractTest : PdfGeneratorContract() {
             }
         } finally {
             file.delete()
+        }
+    }
+
+    override suspend fun extractText(result: PdfResult.Success): List<String> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            // PdfRenderer can extract text from Android 15
+            ParcelFileDescriptor.open(File(result.filePath), ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    (0 until renderer.pageCount).map { index ->
+                        renderer.openPage(index).use { page -> page.textContents.joinToString("\n") { it.text } }
+                    }
+                }
+            }
+        } else {
+            val structure = PdfStructure.parse(File(result.filePath).readBytes())
+            structure.pages.indices.map { page -> structure.textRuns(page).joinToString("\n") { it.text } }
         }
     }
 

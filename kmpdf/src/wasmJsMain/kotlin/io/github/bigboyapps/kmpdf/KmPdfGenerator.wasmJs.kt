@@ -1,20 +1,11 @@
 package io.github.bigboyapps.kmpdf
 
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.await
-import org.jetbrains.skia.Bitmap
-import org.jetbrains.skia.ColorAlphaType
-import org.jetbrains.skia.ColorType
-import org.jetbrains.skia.Image
-import org.jetbrains.skia.ImageInfo
 import org.khronos.webgl.Int8Array
 import org.khronos.webgl.toByteArray
 import org.khronos.webgl.toInt8Array
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.js.Promise
-import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
@@ -76,135 +67,33 @@ class WasmKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
-    ): PdfResult {
-        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
-
-        val pageScope = PdfPageScope()
-        pageScope.pages()
-
-        if (pageScope.pages.isEmpty()) {
-            return PdfResult.Error.Unknown("No pages provided")
-        }
-
-        val density = Density(PAGE_RENDER_SCALE)
-        val plannedPages = try {
-            planPages(config, pageScope.pages) { contents, widthPx ->
-                measureContentHeightsPx(contents, widthPx, density, config.contentTimeout)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: PdfConfigException) {
-            return PdfResult.Error.Unknown(e.message ?: "Invalid page configuration")
-        } catch (e: Throwable) {
-            logger.e(e) { "Failed to measure pages: ${e.message}" }
-            return PdfResult.Error.RenderingFailed("Failed to measure pages: ${e.message}", e)
-        }
-
-        val compress = isCompressionStreamSupported()
-        if (!compress) {
-            logger.w { "CompressionStream is unavailable; page images will be stored uncompressed" }
-        }
-
-        logger.logDebug { "Rendering ${plannedPages.size} pages" }
-
-        val writer = RasterPdfWriter()
-        writer.info = config.metadata.infoEntries()
-
-        plannedPages.forEachIndexed { index, plannedPage ->
-            logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }
-            val pageWidthPx = (plannedPage.widthPt * PAGE_RENDER_SCALE).toInt()
-            val pageHeightPx = (plannedPage.heightPt * PAGE_RENDER_SCALE).toInt()
-
-            val rgb = try {
-                renderPageToRgb(plannedPage.content, pageWidthPx, pageHeightPx, density, config.contentTimeout)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                logger.e(e) { "Failed to render page ${index + 1}: ${e.message}" }
-                return PdfResult.Error.RenderingFailed("Failed to render page ${index + 1}: ${e.message}", e)
-            }
-
-            val data = try {
-                if (compress) deflate(rgb.toInt8Array()).await<Int8Array>().toByteArray() else rgb
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                logger.e(e) { "Failed to compress page ${index + 1}: ${e.message}" }
-                return PdfResult.Error.IOError("Failed to compress page ${index + 1}: ${e.message}", e)
-            }
-
-            writer.addPage(
-                RasterPdfWriter.PageImage(
-                    widthPt = plannedPage.widthPt,
-                    heightPt = plannedPage.heightPt,
-                    widthPx = pageWidthPx,
-                    heightPx = pageHeightPx,
-                    data = data,
-                    flateCompressed = compress
-                )
-            )
-        }
-
-        return try {
-            val pdfBytes = writer.build()
-            val uri = createPdfObjectUrl(pdfBytes.toInt8Array())
-            fileNamesByUri[uri] = config.fileName
-
-            logger.logInfo { "PDF generation successful: ${config.fileName} (${writer.pageCount} pages, ${pdfBytes.size} bytes)" }
-            PdfResult.Success(
-                uri = uri,
-                filePath = config.fileName,
-                fileSize = pdfBytes.size.toLong(),
-                pageCount = writer.pageCount
-            )
-        } catch (e: Throwable) {
-            logger.e(e) { "Failed to generate PDF: ${e.message}" }
-            PdfResult.Error.IOError("Failed to generate PDF: ${e.message}", e)
-        }
-    }
-
-    private suspend fun renderPageToRgb(
-        content: @Composable () -> Unit,
-        width: Int,
-        height: Int,
-        density: Density,
-        contentTimeout: Duration
-    ): ByteArray {
-        val image = renderPageImage(content, width, height, density, contentTimeout)
-
-        return try {
-            image.toRgbOnWhite()
-        } finally {
-            image.close()
-        }
-    }
+    ): PdfResult = generatePdfWith(WasmPdfPlatform, config, pages, logger)
 }
 
-/**
- * Reads the image as RGB bytes, flattening transparent areas onto a white page.
- */
-private fun Image.toRgbOnWhite(): ByteArray {
-    val bitmap = Bitmap()
-    try {
-        bitmap.allocPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.PREMUL))
-        check(readPixels(bitmap, 0, 0)) { "Failed to read rendered page pixels" }
-        val rgba = bitmap.readPixels() ?: error("Failed to read rendered page pixels")
+/** Renders with Skia, compresses with CompressionStream when the browser has it, and keeps PDFs as blobs. */
+private object WasmPdfPlatform : SkiaPdfPlatform() {
+    private var warnedUncompressed = false
 
-        val rgb = ByteArray(width * height * 3)
-        var src = 0
-        var dst = 0
-        while (dst < rgb.size) {
-            // With premultiplied alpha, compositing over white is color + (255 - alpha)
-            val background = 255 - (rgba[src + 3].toInt() and 0xFF)
-            rgb[dst] = ((rgba[src].toInt() and 0xFF) + background).toByte()
-            rgb[dst + 1] = ((rgba[src + 1].toInt() and 0xFF) + background).toByte()
-            rgb[dst + 2] = ((rgba[src + 2].toInt() and 0xFF) + background).toByte()
-            src += 4
-            dst += 3
+    override suspend fun compress(data: ByteArray): ByteArray? {
+        if (!isCompressionStreamSupported()) {
+            if (!warnedUncompressed) {
+                warnedUncompressed = true
+                logger.w { "CompressionStream is unavailable; page images will be stored uncompressed" }
+            }
+            return null
         }
-        return rgb
-    } finally {
-        bitmap.close()
+        return deflate(data.toInt8Array()).await<Int8Array>().toByteArray()
+    }
+
+    override suspend fun save(pdf: ByteArray, config: PdfConfig, pageCount: Int): PdfResult.Success {
+        val uri = createPdfObjectUrl(pdf.toInt8Array())
+        fileNamesByUri[uri] = config.fileName
+        return PdfResult.Success(
+            uri = uri,
+            filePath = config.fileName,
+            fileSize = pdf.size.toLong(),
+            pageCount = pageCount
+        )
     }
 }
 

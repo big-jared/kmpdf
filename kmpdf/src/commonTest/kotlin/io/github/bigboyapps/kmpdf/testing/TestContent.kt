@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -126,3 +128,30 @@ fun decodeItemIndex(rgb: Rgb): Int? {
 
 /** A color that encodes a page number and page count, for footer checks. */
 fun footerColor(pageNumber: Int, pageCount: Int): Color = Color(red = pageNumber * 20, green = pageCount * 20, blue = 255)
+
+/** Plain text, like Material's Text, without depending on Material. */
+@Composable
+fun Text(text: String, modifier: Modifier = Modifier, fontSize: TextUnit = 14.sp, color: Color = Color.Black) {
+    BasicText(text, modifier, style = TextStyle(color = color, fontSize = fontSize))
+}
+
+/** Text in several scripts, plus a paragraph that wraps onto several lines. */
+@Composable
+fun TextSamples() {
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(TextSamples.INVOICE, fontSize = 20.sp)
+        Text(TextSamples.ACCENTS)
+        Text(TextSamples.CJK)
+        Text(TextSamples.PARAGRAPH, modifier = Modifier.width(160.dp))
+    }
+}
+
+object TextSamples {
+    const val INVOICE = "Invoice #1042"
+    const val ACCENTS = "Résumé naïve café – déjà vu"
+    const val CJK = "日本語のテキスト"
+    const val PARAGRAPH = "The quick brown fox jumps over the lazy dog while the invoice total is calculated"
+
+    /** What each sample reads as once extracted, with whitespace collapsed. */
+    val phrases = listOf(INVOICE, ACCENTS, CJK, PARAGRAPH)
+}

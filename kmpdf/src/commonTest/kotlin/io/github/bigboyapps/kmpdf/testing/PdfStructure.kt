@@ -76,6 +76,115 @@ class PdfStructure private constructor(private val bytes: ByteArray) {
         }
     }
 
+    /**
+     * The text shown on the page at [pageIndex], one run per text-showing operator, in content order.
+     *
+     * Only what KmPDF writes is supported: uncompressed content streams, and hex strings in an embedded
+     * composite font with Identity-H encoding. Codes are decoded through the font's ToUnicode map, the way
+     * viewers extract text.
+     */
+    fun textRuns(pageIndex: Int): List<PdfTextRun> {
+        val page = pages[pageIndex].dict
+        val contents = resolve(page["Contents"]) as? PdfValue.Stream ?: return emptyList()
+        check(contents.dict["Filter"] == null) { "Only uncompressed content streams are supported" }
+
+        val resources = resolve(page["Resources"]) as? PdfValue.Dict
+        val fonts = resolve(resources?.get("Font")) as? PdfValue.Dict
+
+        val runs = mutableListOf<PdfTextRun>()
+        val operands = mutableListOf<String>()
+        var inText = false
+        var fontSize = 0f
+        var horizontalScale = 100f
+        var renderMode = 0
+        var x = 0f
+        var y = 0f
+        var toUnicode: ToUnicodeMap? = null
+        for (token in contentTokens(contents.data.latin1())) {
+            if (token.first() == '/' || token.first() == '<' || token.first() == '[' || token.toFloatOrNull() != null) {
+                operands += token
+                continue
+            }
+            when (token) {
+                "BT" -> {
+                    check(!inText) { "Nested BT on page ${pageIndex + 1}" }
+                    inText = true
+                    x = 0f
+                    y = 0f
+                }
+                "ET" -> {
+                    check(inText) { "ET without BT on page ${pageIndex + 1}" }
+                    inText = false
+                }
+                "Tr" -> renderMode = operands.last().toFloat().toInt()
+                "Tz" -> horizontalScale = operands.last().toFloat()
+                "Tf" -> {
+                    val fontName = operands[operands.size - 2].removePrefix("/")
+                    toUnicode = identityFontToUnicode(resolve(fonts?.get(fontName)) as? PdfValue.Dict, fontName)
+                    fontSize = operands.last().toFloat()
+                }
+                "Tm" -> {
+                    val matrix = operands.takeLast(6).map { it.toFloat() }
+                    check(matrix[0] == 1f && matrix[1] == 0f && matrix[2] == 0f && matrix[3] == 1f) {
+                        "Only translation text matrices are supported"
+                    }
+                    x = matrix[4]
+                    y = matrix[5]
+                }
+                "Tj" -> {
+                    check(inText) { "Text shown outside BT/ET on page ${pageIndex + 1}" }
+                    val hex = operands.last()
+                    check(hex.startsWith("<") && hex.length % 4 == 2) { "Expected a hex string of 2-byte codes, got $hex" }
+                    val map = checkNotNull(toUnicode) { "Text shown before a font was set on page ${pageIndex + 1}" }
+                    val text = hex.removeSurrounding("<", ">").chunked(4).joinToString("") { map.decode(it.toInt(16)) }
+                    runs += PdfTextRun(text, x, y, fontSize, horizontalScale, renderMode)
+                }
+            }
+            operands.clear()
+        }
+        check(!inText) { "BT without ET on page ${pageIndex + 1}" }
+        return runs
+    }
+
+    private fun identityFontToUnicode(font: PdfValue.Dict?, name: String): ToUnicodeMap {
+        checkNotNull(font) { "Font /$name isn't in the page's resources" }
+        check((font["Subtype"] as? PdfValue.Name)?.value == "Type0") { "Font /$name isn't a composite font" }
+        check((font["Encoding"] as? PdfValue.Name)?.value == "Identity-H") { "Font /$name isn't Identity-H encoded" }
+        val toUnicode = resolve(font["ToUnicode"]) as? PdfValue.Stream ?: error("Font /$name has no ToUnicode map")
+        val descendant = (resolve(font["DescendantFonts"]) as? PdfValue.Array)?.items?.singleOrNull()
+            ?.let { resolve(it) as? PdfValue.Dict } ?: error("Font /$name has no descendant font")
+        check((descendant["Subtype"] as? PdfValue.Name)?.value == "CIDFontType2") { "Font /$name isn't a TrueType CID font" }
+        val descriptor = resolve(descendant["FontDescriptor"]) as? PdfValue.Dict ?: error("Font /$name has no descriptor")
+        check(resolve(descriptor["FontFile2"]) is PdfValue.Stream) { "Font /$name isn't embedded" }
+        return ToUnicodeMap.parse(toUnicode.data.latin1())
+    }
+
+    /** Splits a content stream into operands and operators. Arrays are kept as one token. */
+    private fun contentTokens(content: String): List<String> {
+        val tokens = mutableListOf<String>()
+        var i = 0
+        while (i < content.length) {
+            val c = content[i]
+            when {
+                c.isPdfWhitespace() -> i++
+                c == '<' || c == '[' -> {
+                    val end = content.indexOf(if (c == '<') '>' else ']', i)
+                    check(end >= 0) { "Unterminated ${if (c == '<') "hex string" else "array"} in content stream" }
+                    tokens += content.substring(i, end + 1).filterNot { it.isPdfWhitespace() }
+                    i = end + 1
+                }
+                c == '(' -> error("Literal strings in content streams aren't supported")
+                else -> {
+                    val start = i
+                    i++
+                    while (i < content.length && !content[i].isPdfWhitespace() && !content[i].isPdfDelimiter()) i++
+                    tokens += content.substring(start, i)
+                }
+            }
+        }
+        return tokens
+    }
+
     private fun collectPages(node: PdfValue.Dict, inheritedMediaBox: List<Float>?, out: MutableList<PdfPage>, depth: Int) {
         check(depth < MAX_PAGE_TREE_DEPTH) { "Page tree is too deep" }
         val mediaBox = (resolve(node["MediaBox"]) as? PdfValue.Array)?.items?.map {
@@ -175,9 +284,60 @@ class PdfStructure private constructor(private val bytes: ByteArray) {
     }
 }
 
+/** A ToUnicode CMap's bfrange and bfchar mappings from 2-byte codes to text. */
+private class ToUnicodeMap(private val chars: Map<Int, String>, private val ranges: List<Triple<Int, Int, Int>>) {
+    fun decode(code: Int): String {
+        chars[code]?.let { return it }
+        val (start, _, destination) = ranges.firstOrNull { code in it.first..it.second }
+            ?: error("Code ${code.toString(16)} isn't in the ToUnicode map")
+        return (destination + code - start).toChar().toString()
+    }
+
+    companion object {
+        fun parse(cmap: String): ToUnicodeMap {
+            val hex = """<([0-9A-Fa-f]+)>"""
+            val chars = mutableMapOf<Int, String>()
+            val ranges = mutableListOf<Triple<Int, Int, Int>>()
+            Regex("""beginbfchar(.*?)endbfchar""", RegexOption.DOT_MATCHES_ALL).findAll(cmap).forEach { block ->
+                Regex("""$hex\s*$hex""").findAll(block.groupValues[1]).forEach { entry ->
+                    val units = entry.groupValues[2].chunked(4).map { it.toInt(16).toChar() }
+                    chars[entry.groupValues[1].toInt(16)] = units.joinToString("")
+                }
+            }
+            Regex("""beginbfrange(.*?)endbfrange""", RegexOption.DOT_MATCHES_ALL).findAll(cmap).forEach { block ->
+                Regex("""$hex\s*$hex\s*$hex""").findAll(block.groupValues[1]).forEach { entry ->
+                    val (start, end, destination) = entry.destructured
+                    check(start.length == 4 && end.length == 4 && destination.length == 4) { "Only 2-byte ranges are supported" }
+                    check(start.substring(0, 2) == end.substring(0, 2)) { "A bfrange may only vary its last byte: $start..$end" }
+                    ranges += Triple(start.toInt(16), end.toInt(16), destination.toInt(16))
+                }
+            }
+            check(chars.isNotEmpty() || ranges.isNotEmpty()) { "The ToUnicode map has no mappings" }
+            return ToUnicodeMap(chars, ranges)
+        }
+    }
+}
+
 class PdfPage(val dict: PdfValue.Dict, val mediaBox: List<Float>) {
     val widthPt: Float get() = mediaBox[2] - mediaBox[0]
     val heightPt: Float get() = mediaBox[3] - mediaBox[1]
+}
+
+/**
+ * Text shown by one operator, starting at ([x], [y]) in PDF space (from the bottom-left, in points).
+ *
+ * @property renderMode The text rendering mode; 3 is invisible.
+ */
+class PdfTextRun(
+    val text: String,
+    val x: Float,
+    val y: Float,
+    val fontSize: Float,
+    val horizontalScale: Float,
+    val renderMode: Int
+) {
+    /** The run's advance width in points, for a font whose glyphs are all half an em wide. */
+    val width: Float get() = text.length * 0.5f * fontSize * horizontalScale / 100f
 }
 
 class PdfImage(

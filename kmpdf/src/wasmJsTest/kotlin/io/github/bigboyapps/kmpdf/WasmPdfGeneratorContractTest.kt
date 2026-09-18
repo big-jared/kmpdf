@@ -62,6 +62,12 @@ class WasmPdfGeneratorContractTest : PdfGeneratorContract() {
 
     override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
         PdfStructure.parse(readPdfBytes(result.uri)).info
+
+    // Browsers have no PDF API, so text is read with the strict structure reader
+    override suspend fun extractText(result: PdfResult.Success): List<String> {
+        val structure = PdfStructure.parse(readPdfBytes(result.uri))
+        return structure.pages.indices.map { page -> structure.textRuns(page).joinToString("\n") { it.text } }
+    }
 }
 
 @JsFun(

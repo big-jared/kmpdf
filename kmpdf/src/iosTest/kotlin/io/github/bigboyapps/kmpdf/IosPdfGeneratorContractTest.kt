@@ -58,6 +58,7 @@ import platform.Foundation.NSRunLoop
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
+import platform.PDFKit.PDFDocument
 import platform.Foundation.dateWithTimeIntervalSinceNow
 import platform.Foundation.create
 import platform.Foundation.runMode
@@ -162,7 +163,14 @@ class IosPdfGeneratorContractTest : PdfGeneratorContract() {
     override fun outputExists(fileName: String): Boolean =
         NSFileManager.defaultManager.fileExistsAtPath("$pdfDirectory/$fileName")
 
-    override val writesProducer: Boolean = false
+    // PDFKit is what iOS apps use to select, search, and copy text in PDFs
+    override suspend fun extractText(result: PdfResult.Success): List<String> =
+        withContext(Dispatchers.Main) {
+            val document = checkNotNull(PDFDocument(NSURL.fileURLWithPath(result.filePath))) {
+                "PDFKit couldn't open ${result.filePath}"
+            }
+            (0 until document.pageCount.toInt()).map { index -> document.pageAtIndex(index.toULong())?.string ?: "" }
+        }
 
     override suspend fun readMetadata(result: PdfResult.Success): Map<String, String> =
         withContext(Dispatchers.Main) {

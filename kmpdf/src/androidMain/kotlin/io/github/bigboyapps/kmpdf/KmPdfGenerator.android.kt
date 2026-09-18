@@ -5,7 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfDocument
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -16,6 +16,8 @@ import androidx.compose.runtime.Recomposer
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.unit.Density
 import androidx.core.content.FileProvider
 import androidx.core.graphics.createBitmap
@@ -40,16 +42,12 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
 import java.lang.ref.WeakReference
-import kotlin.math.ceil
+import java.util.zip.Deflater
 import kotlin.time.Duration
 import android.graphics.Canvas as AndroidCanvas
 
 private val logger = Logger.withTag("KmPdfGenerator")
-
-/** Supersampling factor applied while rasterizing each page for sharper output. */
-private const val RENDER_SCALE = 2f
 
 /** How many times a single page render is retried when the host Activity is torn down mid-render. */
 private const val MAX_PAGE_RENDER_ATTEMPTS = 5
@@ -202,93 +200,102 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
     ): PdfResult {
-        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
-        return withContext(Dispatchers.Main) {
-            val context = applicationContext
-                ?: return@withContext PdfResult.Error.NotInitialized().also {
-                    logger.e { "PDF generation failed: KmPdfGenerator not initialized" }
-                }
-
-            val pageScope = PdfPageScope()
-            pageScope.pages()
-
-            if (pageScope.pages.isEmpty()) {
-                return@withContext PdfResult.Error.Unknown("No pages defined")
-            }
-
-            val plannedPages = try {
-                planPages(config, pageScope.pages) { contents, widthPx ->
-                    var heightsPx = emptyList<Int>()
-                    renderPage({ MeasureContentHeights(contents) { heightsPx = it } }, widthPx, 1, config.contentTimeout)
-                        .recycle()
-                    heightsPx
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: PdfConfigException) {
-                return@withContext PdfResult.Error.Unknown(e.message ?: "Invalid page configuration")
-            } catch (e: Exception) {
-                logger.e(e) { "Failed to measure pages: ${e.message}" }
-                return@withContext PdfResult.Error.RenderingFailed("Failed to measure pages: ${e.message}", e)
-            }
-
-            logger.logDebug { "Rendering ${plannedPages.size} pages" }
-
-            val pdfDocument = PdfDocument()
-            try {
-                // Render and add one page at a time so only one page bitmap is in memory
-                plannedPages.forEachIndexed { index, plannedPage ->
-                    logger.logDebug { "Rendering page ${index + 1} of ${plannedPages.size}" }
-
-                    // PdfDocument only supports whole-point page sizes; round up so content is never cut off
-                    val widthPt = ceil(plannedPage.widthPt).toInt()
-                    val heightPt = ceil(plannedPage.heightPt).toInt()
-                    val widthPx = (widthPt * RENDER_SCALE).toInt()
-                    val heightPx = (heightPt * RENDER_SCALE).toInt()
-
-                    val bitmap = try {
-                        renderPage(plannedPage.content, widthPx, heightPx, config.contentTimeout)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: PdfRenderingException) {
-                        logger.e(e) { "PDF rendering failed: ${e.message}" }
-                        return@withContext PdfResult.Error.RenderingFailed(
-                            e.message ?: "Failed to render PDF pages",
-                            e.cause
-                        )
-                    }
-
-                    try {
-                        addPage(pdfDocument, bitmap, index, widthPt, heightPt)
-                    } catch (e: Exception) {
-                        logger.e(e) { "Failed to add page ${index + 1}: ${e.message}" }
-                        return@withContext PdfResult.Error.IOError("Failed to create PDF: ${e.message}", e)
-                    } finally {
-                        bitmap.recycle()
-                    }
-                }
-
-                logger.logDebug { "All pages rendered, writing PDF" }
-                writePdf(context, config, pdfDocument, plannedPages.size)
-            } finally {
-                pdfDocument.close()
-            }
+        val context = applicationContext ?: return PdfResult.Error.NotInitialized().also {
+            logger.e { "PDF generation failed: KmPdfGenerator not initialized" }
         }
+        return generatePdfWith(AndroidPdfPlatform(context), config, pages, logger)
+    }
+}
+
+/** Renders pages in an offscreen view on the current Activity, and saves PDFs to the cache directory. */
+private class AndroidPdfPlatform(private val context: Context) : PdfPlatform {
+    override suspend fun measureContentHeightsPx(
+        contents: List<@Composable () -> Unit>,
+        widthPx: Int,
+        contentTimeout: Duration
+    ): List<Int> {
+        var heightsPx = emptyList<Int>()
+        render({ MeasureContentHeights(contents) { heightsPx = it } }, widthPx, 1, contentTimeout) { _, _ -> }
+        return heightsPx
     }
 
-    /**
-     * Renders a single page, retrying with the current foreground Activity if the one in use is
-     * torn down mid-render (e.g. the Activity is recreated by a rotation or theme change). If no
-     * live Activity can be acquired across [MAX_PAGE_RENDER_ATTEMPTS], a [PdfRenderingException] is
-     * thrown so the caller can surface a recoverable [PdfResult.Error.RenderingFailed] rather than
-     * letting the underlying crash propagate.
-     */
-    private suspend fun renderPage(
-        pageContent: @Composable () -> Unit,
+    override suspend fun renderPage(
+        content: @Composable () -> Unit,
         widthPx: Int,
         heightPx: Int,
         contentTimeout: Duration
-    ): Bitmap {
+    ): RenderedPage = render(content, widthPx, heightPx, contentTimeout) { view, semanticsOwner ->
+        val bitmap = createBitmap(widthPx, heightPx)
+        try {
+            // Drawing onto white flattens transparent areas onto a white page
+            bitmap.eraseColor(Color.WHITE)
+            view.draw(AndroidCanvas(bitmap))
+            RenderedPage(bitmap.toRgb(), widthPx, heightPx, semanticsOwner.pageTextLines(widthPx, heightPx))
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    override suspend fun compress(data: ByteArray): ByteArray = withContext(Dispatchers.Default) {
+        val deflater = Deflater()
+        try {
+            deflater.setInput(data)
+            deflater.finish()
+            val out = ByteArrayOutputStream(data.size / 4)
+            val buffer = ByteArray(64 * 1024)
+            while (!deflater.finished()) {
+                out.write(buffer, 0, deflater.deflate(buffer))
+            }
+            out.toByteArray()
+        } finally {
+            deflater.end()
+        }
+    }
+
+    override suspend fun save(pdf: ByteArray, config: PdfConfig, pageCount: Int): PdfResult.Success =
+        withContext(Dispatchers.IO) {
+            val outputDir = File(context.cacheDir, "pdfs").apply { mkdirs() }
+            val outputFile = File(outputDir, config.fileName)
+            // Write to a temporary file first so an earlier PDF is only replaced by a complete one
+            val tempFile = File(outputDir, "${config.fileName}.partial")
+            try {
+                tempFile.writeBytes(pdf)
+                check(tempFile.renameTo(outputFile)) { "Failed to move the PDF into place at $outputFile" }
+            } finally {
+                tempFile.delete()
+            }
+            logger.logDebug { "PDF written to: ${outputFile.absolutePath}" }
+
+            val uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    outputFile
+                ).toString()
+            } catch (e: Exception) {
+                outputFile.toURI().toString()
+            }
+            PdfResult.Success(
+                uri = uri,
+                filePath = outputFile.absolutePath,
+                fileSize = outputFile.length(),
+                pageCount = pageCount
+            )
+        }
+
+    /**
+     * Renders [content] until it's ready and hands the laid-out view to [capture], retrying with the
+     * current foreground Activity if the one in use is torn down mid-render (e.g. the Activity is recreated
+     * by a rotation or theme change). If no live Activity can be acquired across
+     * [MAX_PAGE_RENDER_ATTEMPTS], a [PdfRenderingException] is thrown.
+     */
+    private suspend fun <T> render(
+        content: @Composable () -> Unit,
+        widthPx: Int,
+        heightPx: Int,
+        contentTimeout: Duration,
+        capture: (View, SemanticsOwner) -> T
+    ): T = withContext(Dispatchers.Main) {
         var lastError: Throwable? = null
         repeat(MAX_PAGE_RENDER_ATTEMPTS) {
             val activity = liveActivity()
@@ -298,16 +305,16 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 return@repeat
             }
             try {
-                return renderPageOnActivity(activity, pageContent, widthPx, heightPx, contentTimeout)
+                return@withContext renderOnActivity(activity, content, widthPx, heightPx, contentTimeout, capture)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PdfContentTimeoutException) {
-                throw PdfRenderingException(e.message ?: "Page content didn't finish loading", e)
+                throw e
             } catch (e: Exception) {
                 if (!activity.wasTornDown()) {
                     // Failures that aren't caused by Activity recreation, like page content throwing,
                     // won't succeed on a retry
-                    throw PdfRenderingException("Failed to render page: ${e.message}", e)
+                    throw e
                 }
                 // The host window was torn down mid-render (Activity recreated). Re-acquire the
                 // now-current Activity and try again instead of crashing.
@@ -317,18 +324,19 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             }
         }
         throw PdfRenderingException(
-            "Failed to render page after $MAX_PAGE_RENDER_ATTEMPTS attempts: ${lastError?.message}",
+            "No live Activity after $MAX_PAGE_RENDER_ATTEMPTS attempts: ${lastError?.message}",
             lastError
         )
     }
 
-    private suspend fun renderPageOnActivity(
+    private suspend fun <T> renderOnActivity(
         activity: Activity,
-        pageContent: @Composable () -> Unit,
+        content: @Composable () -> Unit,
         widthPx: Int,
         heightPx: Int,
-        contentTimeout: Duration
-    ): Bitmap {
+        contentTimeout: Duration,
+        capture: (View, SemanticsOwner) -> T
+    ): T {
         val parentView = activity.window.decorView.findViewById<ViewGroup>(android.R.id.content)
             ?: throw IllegalStateException("Host Activity has no content view")
 
@@ -346,10 +354,10 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 setParentCompositionContext(recomposer)
                 setContent {
                     CompositionLocalProvider(
-                        LocalDensity provides Density(RENDER_SCALE),
+                        LocalDensity provides Density(PAGE_RENDER_SCALE),
                         LocalPdfContentTracker provides tracker
                     ) {
-                        pageContent()
+                        content()
                     }
                 }
                 alpha = 0f
@@ -373,9 +381,10 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
                 composeView.layout(0, 0, widthPx, heightPx)
             } while (readiness.needsAnotherFrame(tracker.isLoading, recomposer.hasPendingWork))
 
-            val bitmap = createBitmap(widthPx, heightPx)
-            composeView.draw(AndroidCanvas(bitmap))
-            return bitmap
+            // The ComposeView hosts the composition in its only child, which also owns the semantics tree
+            val root = composeView.getChildAt(0) as? ViewRootForTest
+                ?: throw IllegalStateException("Compose content view is missing")
+            return capture(composeView, root.semanticsOwner)
         } finally {
             composeView?.let { view ->
                 try {
@@ -388,71 +397,21 @@ class AndroidKmPdfGenerator : KmPdfGenerator {
             recomposerJob.cancel()
         }
     }
+}
 
-    private fun addPage(
-        pdfDocument: PdfDocument,
-        bitmap: Bitmap,
-        index: Int,
-        widthPt: Int,
-        heightPt: Int
-    ) {
-        val pageInfo = PdfDocument.PageInfo.Builder(widthPt, heightPt, index + 1).create()
-        val page = pdfDocument.startPage(pageInfo)
-
-        val scaleDown = 1f / RENDER_SCALE
-
-        page.canvas.save()
-        page.canvas.scale(scaleDown, scaleDown)
-        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-        page.canvas.restore()
-
-        pdfDocument.finishPage(page)
-    }
-
-    private suspend fun writePdf(
-        context: Context,
-        config: PdfConfig,
-        pdfDocument: PdfDocument,
-        pageCount: Int
-    ): PdfResult = withContext(Dispatchers.IO) {
-        try {
-            val outputDir = File(context.cacheDir, "pdfs").apply { mkdirs() }
-            val outputFile = File(outputDir, config.fileName)
-
-            // PdfDocument has no metadata API, so the Info dictionary is added as an incremental update
-            val pdfBytes = ByteArrayOutputStream().use { buffer ->
-                pdfDocument.writeTo(buffer)
-                buffer.toByteArray()
-            }
-            FileOutputStream(outputFile).use { outputStream ->
-                outputStream.write(appendInfoDictionary(pdfBytes, config.metadata.infoEntries()))
-            }
-            logger.logDebug { "PDF written to: ${outputFile.absolutePath}" }
-
-            val fileSize = outputFile.length()
-
-            val uri = try {
-                FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    outputFile
-                ).toString()
-            } catch (e: Exception) {
-                outputFile.toURI().toString()
-            }
-
-            logger.logInfo { "PDF generation successful: $uri ($pageCount pages, $fileSize bytes)" }
-            PdfResult.Success(
-                uri = uri,
-                filePath = outputFile.absolutePath,
-                fileSize = fileSize,
-                pageCount = pageCount
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger.e(e) { "Failed to create PDF: ${e.message}" }
-            PdfResult.Error.IOError("Failed to create PDF: ${e.message}", e)
+/** Reads an opaque bitmap as RGB bytes. */
+private fun Bitmap.toRgb(): ByteArray {
+    val rgb = ByteArray(width * height * 3)
+    val row = IntArray(width)
+    var dst = 0
+    for (y in 0 until height) {
+        getPixels(row, 0, width, 0, y, width, 1)
+        for (pixel in row) {
+            rgb[dst] = (pixel shr 16).toByte()
+            rgb[dst + 1] = (pixel shr 8).toByte()
+            rgb[dst + 2] = pixel.toByte()
+            dst += 3
         }
     }
+    return rgb
 }

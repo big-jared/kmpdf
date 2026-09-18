@@ -32,6 +32,25 @@ class RgbaImage(val width: Int, val height: Int, val pixels: ByteArray) {
         return RgbaImage(width, height, out)
     }
 
+    /** The bounds of every pixel that isn't close to white, or null when the image is blank. */
+    fun inkBounds(threshold: Int = 64): InkBounds? {
+        var left = width
+        var top = height
+        var right = -1
+        var bottom = -1
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                if (pixel(x, y).distanceTo(Rgb(255, 255, 255)) > threshold) {
+                    if (x < left) left = x
+                    if (x > right) right = x
+                    if (y < top) top = y
+                    if (y > bottom) bottom = y
+                }
+            }
+        }
+        return if (right < 0) null else InkBounds(left, top, right + 1, bottom + 1)
+    }
+
     private fun channel(index: Int): Int = pixels[index].toInt() and 0xFF
 
     companion object {
@@ -67,6 +86,9 @@ class RgbaImage(val width: Int, val height: Int, val pixels: ByteArray) {
         }
     }
 }
+
+/** A pixel rectangle; [right] and [bottom] are exclusive. */
+data class InkBounds(val left: Int, val top: Int, val right: Int, val bottom: Int)
 
 data class Rgb(val r: Int, val g: Int, val b: Int) {
     /** The largest per-channel difference to [other]. */

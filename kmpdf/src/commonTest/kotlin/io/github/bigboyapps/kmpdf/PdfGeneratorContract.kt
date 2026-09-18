@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,11 +22,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.bigboyapps.kmpdf.testing.DetailedContent
 import io.github.bigboyapps.kmpdf.testing.MARKER_CENTER_DP
 import io.github.bigboyapps.kmpdf.testing.MarkerPage
 import io.github.bigboyapps.kmpdf.testing.OversizedContent
 import io.github.bigboyapps.kmpdf.testing.PageMarkerColors
+import io.github.bigboyapps.kmpdf.testing.PdfStructure
+import io.github.bigboyapps.kmpdf.testing.Text
+import io.github.bigboyapps.kmpdf.testing.TextSamples
 import io.github.bigboyapps.kmpdf.testing.Rgb
 import io.github.bigboyapps.kmpdf.testing.RgbaImage
 import io.github.bigboyapps.kmpdf.testing.StackedBlocks
@@ -94,14 +100,11 @@ abstract class PdfGeneratorContract {
     /** Reads the document information back with the platform's own PDF engine (or the strict structure reader). */
     protected abstract suspend fun readMetadata(result: PdfResult.Success): Map<String, String>
 
-    /** Whether KmPDF can set the producer. iOS's CoreGraphics always writes its own. */
-    protected open val writesProducer: Boolean = true
+    /** Extracts each page's text with the platform's own PDF engine (or the strict structure reader). */
+    protected abstract suspend fun extractText(result: PdfResult.Success): List<String>
 
     /** A URI that [readPdfBytes] can't read on this platform. */
     protected open val missingPdfUri: String = "/kmpdf-missing/does-not-exist.pdf"
-
-    /** The page size, in points, the platform is expected to produce for a requested size. */
-    protected open fun expectedPageSizePt(width: Float, height: Float): Pair<Float, Float> = width to height
 
     private suspend fun generate(
         fileName: String,
@@ -181,9 +184,7 @@ abstract class PdfGeneratorContract {
         sizes.forEachIndexed { index, size ->
             val result = generateSuccessfully("contract-size-$index.pdf", size) { page { MarkerPage(PageMarkerColors[index]) } }
             val (width, height) = readBack(result, renderPages = false).pageSizesPt.single()
-            val (expectedWidth, expectedHeight) = expectedPageSizePt(size.width.value, size.height.value)
-            assertTrue(abs(width - expectedWidth) <= SIZE_TOLERANCE_PT, "Size $index width: expected $expectedWidth, got $width")
-            assertTrue(abs(height - expectedHeight) <= SIZE_TOLERANCE_PT, "Size $index height: expected $expectedHeight, got $height")
+            assertPageSize(width to height, size.width.value, size.height.value, "Size $index")
         }
     }
 
@@ -202,9 +203,7 @@ abstract class PdfGeneratorContract {
         val result = generateSuccessfully("contract-oversized.pdf", PageSize.Letter) { page { OversizedContent() } }
         val document = readBack(result)
 
-        val (width, height) = document.pageSizesPt.single()
-        val (expectedWidth, expectedHeight) = expectedPageSizePt(PageSize.Letter.width.value, PageSize.Letter.height.value)
-        assertTrue(abs(width - expectedWidth) <= SIZE_TOLERANCE_PT && abs(height - expectedHeight) <= SIZE_TOLERANCE_PT)
+        assertPageSize(document.pageSizesPt.single(), PageSize.Letter.width.value, PageSize.Letter.height.value, "Letter page")
         val page = document.pages.single()
         assertPixelsMatch(referenceOnWhite({ OversizedContent() }, page.width, page.height), page, "Oversized content")
     }
@@ -403,10 +402,9 @@ abstract class PdfGeneratorContract {
     }
 
     private fun assertPageSize(actual: Pair<Float, Float>, width: Float, height: Float, what: String) {
-        val (expectedWidth, expectedHeight) = expectedPageSizePt(width, height)
         assertTrue(
-            abs(actual.first - expectedWidth) <= SIZE_TOLERANCE_PT && abs(actual.second - expectedHeight) <= SIZE_TOLERANCE_PT,
-            "$what should be $expectedWidth x $expectedHeight pt but was ${actual.first} x ${actual.second} pt"
+            abs(actual.first - width) <= SIZE_TOLERANCE_PT && abs(actual.second - height) <= SIZE_TOLERANCE_PT,
+            "$what should be $width x $height pt but was ${actual.first} x ${actual.second} pt"
         )
     }
 
@@ -627,8 +625,84 @@ abstract class PdfGeneratorContract {
         assertEquals(metadata.subject, info["Subject"])
         assertEquals(metadata.keywords, info["Keywords"])
         assertEquals(metadata.creator, info["Creator"])
-        if (writesProducer) assertEquals("KmPDF $KMPDF_VERSION", info["Producer"])
+        assertEquals("KmPDF $KMPDF_VERSION", info["Producer"])
         assertEquals(2, readBack(result, renderPages = false).pageSizesPt.size, "The PDF should still open with both pages")
+    }
+
+    @Test
+    fun textCanBeSelectedAndSearched() = runPdfTest {
+        val result = generateSuccessfully("contract-text.pdf") {
+            page { TextSamples() }
+            page { Text("Second page only", fontSize = 18.sp) }
+        }
+
+        val pages = extractText(result).map { it.normalizeWhitespace() }
+        assertEquals(2, pages.size, "Expected text for both pages")
+        TextSamples.phrases.forEach { phrase ->
+            assertTrue(phrase in pages[0], "Page 1 should contain \"$phrase\", but its text was \"${pages[0]}\"")
+        }
+        assertTrue("Second page only" !in pages[0], "Page 2's text shouldn't be on page 1")
+        assertTrue("Second page only" in pages[1], "Page 2 should contain its own text, but was \"${pages[1]}\"")
+    }
+
+    @Test
+    fun textIsInvisibleAndLinedUpWithTheRenderedText() = runPdfTest {
+        val result = generateSuccessfully("contract-text-position.pdf") {
+            page {
+                Text(
+                    "Positioned",
+                    modifier = Modifier.absolutePadding(left = 72.dp, top = 100.dp),
+                    fontSize = 20.sp,
+                    color = Color.Black
+                )
+            }
+        }
+        val structure = PdfStructure.parse(readPdfBytes(result.uri))
+        val run = structure.textRuns(0).single()
+        val pageHeight = structure.pages[0].heightPt
+
+        assertEquals("Positioned", run.text)
+        assertEquals(3, run.renderMode, "Text over the page image should be invisible")
+        assertEquals(72f, run.x, 1f, "Text should start where it was laid out")
+        val baselineFromTop = pageHeight - run.y
+        assertTrue(baselineFromTop in 110f..130f, "The baseline should be inside the 20 pt line at 100 pt, was $baselineFromTop")
+
+        // The run should cover the drawn glyphs, so selecting it highlights the text people see
+        val page = readBack(result).pages.single()
+        val ink = page.inkBounds() ?: error("The rendered text should be visible")
+        val scale = RENDER_SCALE.toFloat()
+        assertTrue(run.x <= ink.left / scale + 2f, "Text starts at ${run.x} pt but ink starts at ${ink.left / scale} pt")
+        assertEquals(ink.right / scale, run.x + run.width, 4f, "Text should end where the ink ends")
+        assertTrue(ink.top / scale >= baselineFromTop - run.fontSize, "Ink above the line: ${ink.top / scale} pt")
+        assertTrue(ink.bottom / scale <= baselineFromTop + run.fontSize / 2, "Ink below the line: ${ink.bottom / scale} pt")
+    }
+
+    @Test
+    fun textOutsideThePageOrClippedAwayIsLeftOut() = runPdfTest {
+        val result = generateSuccessfully("contract-text-hidden.pdf", PageSize(width = 300.dp, height = 200.dp)) {
+            page {
+                Box(Modifier.fillMaxSize()) {
+                    Text("Visible", fontSize = 12.sp)
+                    Text("Below the page", modifier = Modifier.absolutePadding(top = 400.dp), fontSize = 12.sp)
+                    Box(Modifier.absolutePadding(top = 50.dp).size(40.dp).clipToBounds()) {
+                        Text("Clipped away", modifier = Modifier.offset(y = 100.dp), fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        val text = extractText(result).single().normalizeWhitespace()
+        assertTrue("Visible" in text, "Visible text should be extracted, got \"$text\"")
+        assertTrue("Below the page" !in text, "Text outside the page shouldn't be extracted, got \"$text\"")
+        assertTrue("Clipped away" !in text, "Clipped text shouldn't be extracted, got \"$text\"")
+    }
+
+    @Test
+    fun pagesWithoutTextHaveNoTextLayer() = runPdfTest {
+        val result = generateSuccessfully("contract-no-text.pdf") { page { MarkerPage(PageMarkerColors[0]) } }
+
+        assertTrue(PdfStructure.parse(readPdfBytes(result.uri)).textRuns(0).isEmpty())
+        assertEquals("", extractText(result).single().normalizeWhitespace())
     }
 
     @Test
@@ -648,6 +722,8 @@ abstract class PdfGeneratorContract {
 
         /** How far from a margin edge to sample, so resampling at the edge itself doesn't matter. */
         private const val EDGE_OFFSET_PX = 3
+
+        private fun String.normalizeWhitespace() = split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
 
         private fun Color.toRgb() = Rgb((red * 255 + 0.5f).toInt(), (green * 255 + 0.5f).toInt(), (blue * 255 + 0.5f).toInt())
     }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.apache.pdfbox.Loader
 import org.apache.pdfbox.rendering.ImageType
 import org.apache.pdfbox.rendering.PDFRenderer
+import org.apache.pdfbox.text.PDFTextStripper
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -70,5 +71,15 @@ class JvmPdfGeneratorContractTest : PdfGeneratorContract() {
                 "Creator" to info.creator,
                 "Producer" to info.producer
             ).mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
+        }
+
+    override suspend fun extractText(result: PdfResult.Success): List<String> =
+        Loader.loadPDF(File(result.filePath)).use { document ->
+            (1..document.numberOfPages).map { page ->
+                PDFTextStripper().apply {
+                    startPage = page
+                    endPage = page
+                }.getText(document)
+            }
         }
 }

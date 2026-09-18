@@ -7,6 +7,7 @@
 Generate PDF documents from Compose UI on Android, iOS, Desktop, and Web.
 
 - Render any `@Composable` as a PDF page
+- Text can be selected, searched, and copied
 - Page sizes, margins, and pages sized to their content
 - Automatic pagination with headers, footers, and page numbers
 - Waits for content that loads asynchronously
@@ -154,7 +155,7 @@ PdfConfig(
 )
 ```
 
-PDF viewers show these in the document's properties. KmPDF also records itself as the producer, except on iOS, where CoreGraphics always writes its own.
+PDF viewers show these in the document's properties. KmPDF also records itself as the producer.
 
 ### Reading the PDF Bytes
 
@@ -223,8 +224,6 @@ Create `res/xml/file_paths.xml`:
 </paths>
 ```
 
-Android's `PdfDocument` only supports whole-point page sizes, so fractional page sizes round up (612.5 × 792.25 becomes 613 × 793).
-
 ### iOS
 
 No additional setup required. PDFs are saved to the app's `Documents/pdfs/` directory.
@@ -271,14 +270,22 @@ when (result) {
 
 Cancelling the coroutine that calls `generatePdf` cancels generation, and no partial PDF is left behind.
 
+## Selectable Text
+
+Each page is rendered at 2 pixels per point and embedded as an image, so the PDF looks exactly like your composable. Over the image, KmPDF writes the page's text invisibly, line by line, in the same place it's drawn. That's how scanned documents are made searchable, and it lets people select, search, and copy the text in any PDF viewer.
+
+Text comes from `Text` and `BasicText` (anything that exposes its text layout to accessibility). Text that's clipped away or outside the page is left out. Text drawn directly on a `Canvas`, or inside an image, isn't included.
+
 ## Limitations
 
-- **Pages are images.** Each page is rendered at 2 pixels per point and embedded as an image, so the PDF looks exactly like your composable, but its text can't be selected, searched, or copied ([#7](https://github.com/big-jared/kmpdf/issues/7)).
+- **Pages are images with a text layer.** Text can be selected and searched, but it isn't vector text: it doesn't stay sharp at very high zoom, and each page is stored as an image, so files are larger than a PDF written with fonts.
+- **Right-to-left text is extracted in logical order.** Copying Arabic or Hebrew gives the right text, but some viewers show it reversed when searching or extracting it.
+- **Compose version.** On Desktop, iOS, and Web, the text layer reads the page's semantics through an internal Compose API, so KmPDF is tied to the Compose Multiplatform version it's built with (1.9.x). A newer Compose version may need a KmPDF update.
 - **No automatic splitting inside a composable.** `pages()` paginates a list of items; a single composable taller than a page is clipped (or use `PageSize.wrapHeight`).
 
 ## Testing
 
-Every platform runs the same contract suite, which reads each generated PDF back with that platform's own PDF engine (PDFBox, CoreGraphics, Android's `PdfRenderer`, or a strict PDF structure reader on the web) and compares every page pixel by pixel with a direct render of the same composable:
+Every platform runs the same contract suite, which reads each generated PDF back with that platform's own PDF engine (PDFBox, CoreGraphics and PDFKit, Android's `PdfRenderer`, or a strict PDF structure reader on the web). It compares every page pixel by pixel with a direct render of the same composable, and checks that the text can be extracted and lines up with the drawn text:
 
 ```bash
 ./gradlew :kmpdf:jvmTest :kmpdf:iosSimulatorArm64Test :kmpdf:wasmJsBrowserTest
@@ -289,7 +296,7 @@ Android tests run on a device or emulator with `./gradlew :kmpdf:connectedDebugA
 ## Requirements
 
 - Kotlin 2.2.21+
-- Compose Multiplatform 1.9.2+
+- Compose Multiplatform 1.9.x
 - Android: minSdk 26
 - iOS: iOS 14.0+
 - Desktop: JVM 17+
