@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -21,6 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.bigboyapps.kmpdf.testing.DetailedContent
@@ -675,6 +678,47 @@ abstract class PdfGeneratorContract {
         assertEquals(ink.right / scale, run.x + run.width, 4f, "Text should end where the ink ends")
         assertTrue(ink.top / scale >= baselineFromTop - run.fontSize, "Ink above the line: ${ink.top / scale} pt")
         assertTrue(ink.bottom / scale <= baselineFromTop + run.fontSize / 2, "Ink below the line: ${ink.bottom / scale} pt")
+    }
+
+    @Test
+    fun textLinesUpWhateverItsAlignmentPaddingOrWhitespace() = runPdfTest {
+        // Each case sits in its own 100 pt band so its ink can be measured on its own
+        val result = generateSuccessfully("contract-text-layouts.pdf") {
+            page {
+                Box(Modifier.fillMaxSize()) {
+                    Text("    Indented", Modifier.absolutePadding(left = 72.dp, top = 100.dp), fontSize = 20.sp)
+                    Text(
+                        "Total 12.00",
+                        Modifier.absolutePadding(top = 200.dp, right = 72.dp).fillMaxWidth(),
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.End,
+                        softWrap = false
+                    )
+                    Text(
+                        "Centered",
+                        Modifier.absolutePadding(top = 300.dp).fillMaxWidth(),
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center,
+                        softWrap = false
+                    )
+                    // A semantics modifier outside the padding puts the semantics node's bounds outside it too
+                    Text("Tagged", Modifier.absolutePadding(top = 376.dp).testTag("tagged").padding(24.dp), fontSize = 20.sp)
+                }
+            }
+        }
+        val structure = PdfStructure.parse(readPdfBytes(result.uri))
+        val runs = structure.textRuns(0).associateBy { it.text }
+        assertEquals(setOf("Indented", "Total 12.00", "Centered", "Tagged"), runs.keys, "Every line should be in the text layer, without its surrounding whitespace")
+
+        val page = readBack(result).pages.single()
+        val scale = RENDER_SCALE.toFloat()
+        runs.values.forEach { run ->
+            val baselineFromTop = structure.pages[0].heightPt - run.y
+            val band = ((baselineFromTop - run.fontSize) * scale).toInt()..((baselineFromTop + run.fontSize / 2) * scale).toInt()
+            val ink = page.inkBounds(rows = band) ?: error("\"${run.text}\" should be drawn near its text")
+            assertEquals(ink.left / scale, run.x, 3f, "\"${run.text}\" should start where its ink starts")
+            assertEquals(ink.right / scale, run.x + run.width, 4f, "\"${run.text}\" should end where its ink ends")
+        }
     }
 
     @Test

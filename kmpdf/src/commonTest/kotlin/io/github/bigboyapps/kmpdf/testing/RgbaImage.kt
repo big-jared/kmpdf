@@ -32,13 +32,13 @@ class RgbaImage(val width: Int, val height: Int, val pixels: ByteArray) {
         return RgbaImage(width, height, out)
     }
 
-    /** The bounds of every pixel that isn't close to white, or null when the image is blank. */
-    fun inkBounds(threshold: Int = 64): InkBounds? {
+    /** The bounds of every pixel in [rows] that isn't close to white, or null when they're blank. */
+    fun inkBounds(threshold: Int = 64, rows: IntRange = 0 until height): InkBounds? {
         var left = width
         var top = height
         var right = -1
         var bottom = -1
-        for (y in 0 until height) {
+        for (y in rows.first.coerceAtLeast(0)..rows.last.coerceAtMost(height - 1)) {
             for (x in 0 until width) {
                 if (pixel(x, y).distanceTo(Rgb(255, 255, 255)) > threshold) {
                     if (x < left) left = x

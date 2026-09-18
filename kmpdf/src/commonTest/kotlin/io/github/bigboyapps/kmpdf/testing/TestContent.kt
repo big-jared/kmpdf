@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -131,8 +132,15 @@ fun footerColor(pageNumber: Int, pageCount: Int): Color = Color(red = pageNumber
 
 /** Plain text, like Material's Text, without depending on Material. */
 @Composable
-fun Text(text: String, modifier: Modifier = Modifier, fontSize: TextUnit = 14.sp, color: Color = Color.Black) {
-    BasicText(text, modifier, style = TextStyle(color = color, fontSize = fontSize))
+fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = 14.sp,
+    color: Color = Color.Black,
+    textAlign: TextAlign = TextAlign.Unspecified,
+    softWrap: Boolean = true
+) {
+    BasicText(text, modifier, style = TextStyle(color = color, fontSize = fontSize, textAlign = textAlign), softWrap = softWrap)
 }
 
 /** Text in several scripts, plus a paragraph that wraps onto several lines. */
