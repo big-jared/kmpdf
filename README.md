@@ -270,6 +270,13 @@ when (result) {
 
 Cancelling the coroutine that calls `generatePdf` cancels generation, and no partial PDF is left behind.
 
+## Sample App
+
+`./gradlew :sample:run` opens the desktop sample, which generates ten documents: a chart page, a long
+table, mixed content, a receipt sized to its content, a 100-row paginated invoice, a selectable-text
+showcase, a graphics showcase, a page that waits for data to load, a document mixing page sizes, and a
+page that deliberately times out. It also reads every generated PDF back to check the bytes.
+
 ## Selectable Text
 
 Each page is rendered at 2 pixels per point and embedded as an image, so the PDF looks exactly like your composable. Over the image, KmPDF writes the page's text invisibly, line by line, in the same place it's drawn. That's how scanned documents are made searchable, and it lets people select, search, and copy the text in any PDF viewer.
@@ -292,6 +299,13 @@ Every platform runs the same contract suite, which reads each generated PDF back
 ```
 
 Android tests run on a device or emulator with `./gradlew :kmpdf:connectedDebugAndroidTest`.
+
+The sample app's documents are tested too, with `./gradlew :sample:jvmTest`: every sample generates, its
+text can be searched, hidden text stays out, pagination adds page numbers, and page sizes come out exact.
+
+`PdfConformanceTest` writes a corpus of PDFs covering every feature to `kmpdf/build/validation-pdfs`. It
+checks that generating the same document twice produces byte-for-byte identical files, and CI then runs
+`qpdf --check` over the corpus as an independent check of the file structure.
 
 ## Requirements
 

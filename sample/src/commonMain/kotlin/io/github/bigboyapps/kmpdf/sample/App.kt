@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.bigboyapps.kmpdf.*
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun App() {
@@ -29,12 +30,17 @@ fun App() {
     }
 }
 
-enum class SampleType(val title: String) {
-    DEFAULT("Chart and text"),
-    LONG_TABLE("Long table"),
-    MIXED_CONTENT("Mixed content"),
-    RECEIPT("Receipt"),
-    PAGINATED_INVOICE("Paginated invoice")
+enum class SampleType(val title: String, val description: String) {
+    DEFAULT("Chart and text", "Chart, lists, and text on one page"),
+    LONG_TABLE("Long table", "Three pages of table rows"),
+    MIXED_CONTENT("Mixed content", "Text, lists, and quotes over two pages"),
+    RECEIPT("Receipt", "Page sized to its content (wrapHeight)"),
+    PAGINATED_INVOICE("Paginated invoice", "100 rows flowed across pages with page numbers"),
+    SELECTABLE_TEXT("Selectable text", "Scripts, wrapping, alignment, clipped and hidden text"),
+    GRAPHICS("Graphics and images", "Gradients, Canvas drawing, and a generated image"),
+    ASYNC_CONTENT("Async content", "A page that waits for data with PdfContentLoading"),
+    MIXED_SIZES("Mixed page sizes", "A4, landscape, fractional, and content-sized pages in one file"),
+    NEVER_LOADS("Never finishes loading", "Expected to fail with a content timeout after 3s")
 }
 
 @Composable
@@ -42,6 +48,8 @@ fun SampleScreen() {
     val scope = rememberCoroutineScope()
     val generator = remember { createKmPdfGenerator() }
     var pdfUri by remember { mutableStateOf<String?>(null) }
+    var readBack by remember { mutableStateOf<String?>(null) }
+    var details by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedPageSize by remember { mutableStateOf(PageSize.A4) }
@@ -125,17 +133,16 @@ fun SampleScreen() {
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(
-                        "Default (Chart & Text)" to SampleType.DEFAULT,
-                        "Long Table (50+ rows)" to SampleType.LONG_TABLE,
-                        "Mixed Content (Text, Lists, Quotes)" to SampleType.MIXED_CONTENT,
-                        "Receipt (Page Sized to Content)" to SampleType.RECEIPT,
-                        "Invoice (Automatic Pagination, 100 Rows)" to SampleType.PAGINATED_INVOICE
-                    ).forEach { (name, type) ->
+                    SampleType.entries.forEach { type ->
                         FilterChip(
                             selected = selectedSample == type,
                             onClick = { selectedSample = type },
-                            label = { Text(name) },
+                            label = {
+                                Column {
+                                    Text(type.title)
+                                    Text(type.description, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -149,61 +156,19 @@ fun SampleScreen() {
                     isGenerating = true
                     errorMessage = null
                     pdfUri = null
+                    readBack = null
+                    details = null
 
                     when (val result = generator.generatePdf(
-                        config = PdfConfig(
-                            pageSize = selectedPageSize,
-                            fileName = "sample_${getCurrentTimestamp()}.pdf",
-                            margins = selectedMargins,
-                            metadata = PdfMetadata(
-                                title = "KmPDF sample: ${selectedSample.title}",
-                                author = "KmPDF",
-                                subject = "Generated from Compose UI",
-                                creator = "KmPDF Sample App"
-                            )
-                        )
-                    ) {
-                        when (selectedSample) {
-                            SampleType.DEFAULT -> {
-                                page {
-                                    SamplePdfContent()
-                                }
-                            }
-                            SampleType.LONG_TABLE -> {
-                                // Create 3 pages with table content
-                                repeat(3) { pageIndex ->
-                                    page {
-                                        LongTablePage(pageIndex + 1)
-                                    }
-                                }
-                            }
-                            SampleType.MIXED_CONTENT -> {
-                                page {
-                                    MixedContentPage(1)
-                                }
-                                page {
-                                    MixedContentPage(2)
-                                }
-                            }
-                            SampleType.RECEIPT -> {
-                                // A narrow page that's exactly as tall as the receipt
-                                page(size = PageSize.wrapHeight(280.dp)) {
-                                    ReceiptContent()
-                                }
-                            }
-                            SampleType.PAGINATED_INVOICE -> {
-                                pages(
-                                    items = sampleInvoiceRows,
-                                    header = { InvoiceHeader() },
-                                    footer = { info -> InvoiceFooter(info) }
-                                ) { row ->
-                                    InvoiceRowContent(row)
-                                }
-                            }
-                        }
-                    }) {
+                        config = sampleConfig(selectedSample, selectedPageSize, selectedMargins),
+                        pages = { sampleDocument(selectedSample) }
+                    )) {
                         is PdfResult.Success -> {
-                            pdfUri = "${result.uri}\nPages: ${result.pageCount}, Size: ${result.fileSize / 1024}KB"
+                            pdfUri = result.uri
+                            // Read the PDF back to check it's the file the result describes
+                            readBack = runCatching { checkPdfBytes(readPdfBytes(result.uri), result) }
+                                .getOrElse { "Couldn't read the PDF back: ${it.message}" }
+                            details = "${result.pageCount} pages, ${result.fileSize / 1024} KB"
                             // Automatically open share sheet
                             sharePdf(result.uri, "Share PDF")
                         }
@@ -239,6 +204,25 @@ fun SampleScreen() {
                     )
                     Text(
                         text = "Path: $uri",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    details?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    readBack?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Text(
+                        text = "Tip: open the PDF and try selecting or searching its text.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -340,6 +324,7 @@ fun SamplePdfContent() {
 
         listOf(
             "Cross-platform support (Android, iOS, Desktop, WASM)",
+            "Selectable, searchable text on every page",
             "Render any @Composable to PDF",
             "Configurable page sizes and margins",
             "Simple, intuitive API"

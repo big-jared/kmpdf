@@ -34,12 +34,32 @@ jobs:
     - name: Run JVM, iOS simulator, and web tests
       run: ./gradlew :kmpdf:jvmTest :kmpdf:iosSimulatorArm64Test :kmpdf:wasmJsBrowserTest --no-configuration-cache
 
+    # Generates every sample the app offers and reads each PDF back with PDFBox
+    - name: Run sample app tests
+      run: ./gradlew :sample:jvmTest --no-configuration-cache
+
+    # qpdf is an independent implementation: it re-reads every object and cross-reference entry
+    - name: Validate the generated PDFs with qpdf
+      run: |
+        brew install qpdf
+        pdfs=(kmpdf/build/validation-pdfs/*.pdf)
+        if [ ! -e "${pdfs[0]}" ]; then
+          echo "PdfConformanceTest wrote no PDFs to validate"
+          exit 1
+        fi
+        for pdf in "${pdfs[@]}"; do
+          echo "== $pdf"
+          qpdf --check "$pdf"
+        done
+
     - name: Upload build and test reports
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: build-reports
-        path: kmpdf/build/reports/
+        path: |
+          kmpdf/build/reports/
+          sample/build/reports/
 
   android-tests:
     name: Android instrumented tests
@@ -80,4 +100,6 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: android-test-reports
-        path: kmpdf/build/reports/androidTests/
+        path: |
+          kmpdf/build/reports/
+          sample/build/reports/androidTests/
