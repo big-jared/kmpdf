@@ -1,4 +1,6 @@
 import com.vanniktech.maven.publish.SonatypeHost
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSetTree
 
 plugins {
     alias(libs.plugins.multiplatform)
@@ -10,6 +12,23 @@ plugins {
 }
 
 val libraryVersion = "1.2.0"
+
+// Generates KMPDF_VERSION from libraryVersion, so the version written into PDFs matches each release
+val generateVersionSource by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/kmpdfVersion/kotlin")
+    val version = libraryVersion
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("io/github/bigboyapps/kmpdf/KmPdfVersion.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            "package io.github.bigboyapps.kmpdf\n\n" +
+                "/** The KmPDF version, written into generated PDFs as their producer. */\n" +
+                "internal const val KMPDF_VERSION = \"$version\"\n"
+        )
+    }
+}
 
 mavenPublishing {
     coordinates(
@@ -51,8 +70,28 @@ mavenPublishing {
 kotlin {
     jvmToolchain(17)
 
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
+    applyDefaultHierarchyTemplate {
+        common {
+            // Targets that render with Skia through ImageComposeScene
+            group("skiko") {
+                withJvm()
+                group("ios") {
+                    withIosX64()
+                    withIosArm64()
+                    withIosSimulatorArm64()
+                }
+                withWasmJs()
+            }
+        }
+    }
+
     androidTarget {
         publishLibraryVariants("release")
+
+        // Run the shared commonTest suites as instrumented tests on a device or emulator
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        instrumentedTestVariant.sourceSetTree.set(KotlinSourceSetTree.test)
     }
 
     jvm()
@@ -70,10 +109,20 @@ kotlin {
 
     @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
     wasmJs {
-        browser()
+        browser {
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateVersionSource)
+        }
+
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)
@@ -84,21 +133,30 @@ kotlin {
 
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
         }
 
         androidMain.dependencies {
             implementation(libs.androidx.core)
         }
 
+        androidInstrumentedTest.dependencies {
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.core)
+            implementation(libs.androidx.test.ext.junit)
+            implementation(libs.androidx.activityCompose)
+        }
+
         jvmMain.dependencies {
             implementation(compose.desktop.common)
-            implementation(libs.pdfbox)
             implementation(libs.kotlinx.coroutines.swing)
         }
 
         jvmTest.dependencies {
             // Skia native runtime, needed to render pages in tests
             implementation(compose.desktop.currentOs)
+            // An independent PDF implementation to read generated PDFs back
+            implementation(libs.pdfbox)
         }
 
         wasmJsMain.dependencies {
@@ -113,6 +171,7 @@ android {
 
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {

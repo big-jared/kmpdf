@@ -1,21 +1,17 @@
 package io.github.bigboyapps.kmpdf
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.apache.pdfbox.pdmodel.PDDocument
-import org.apache.pdfbox.pdmodel.PDPage
-import org.apache.pdfbox.pdmodel.PDPageContentStream
-import org.apache.pdfbox.pdmodel.common.PDRectangle
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory
-import org.jetbrains.skia.Image
 import java.awt.Desktop
-import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.zip.Deflater
+import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
@@ -32,142 +28,75 @@ actual fun sharePdf(uri: String, title: String) {
     }
 }
 
+actual suspend fun readPdfBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+    val file = if (uri.startsWith("file:")) File(URI(uri)) else File(uri)
+    file.readBytes()
+}
+
 class DesktopKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
-    ): PdfResult {
-        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
-
-        return withContext(Dispatchers.Default) {
-            // Build page list
-            val pageScope = PdfPageScope()
-            pageScope.pages()
-            val pageContents = pageScope.pages
-
-            if (pageContents.isEmpty()) {
-                return@withContext PdfResult.Error.Unknown("No pages provided")
-            }
-
-            // Page dimensions in points
-            val widthPt = config.pageSize.width.value
-            val heightPt = config.pageSize.height.value
-
-            // Use 2x scale for rendering quality
-            val scale = 2f
-            val pageWidthPx = (widthPt * scale).toInt()
-            val pageHeightPx = (heightPt * scale).toInt()
-
-            logger.logDebug { "Page size: ${widthPt}x${heightPt}pt (${pageWidthPx}x${pageHeightPx}px at ${scale}x)" }
-            logger.logDebug { "Rendering ${pageContents.size} pages" }
-
-            // Create PDF
-            withContext(Dispatchers.IO) {
-                val document = PDDocument()
-
-                try {
-                    // Render each page
-                    pageContents.forEachIndexed { index, pageContent ->
-                        logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
-
-                        val bufferedImage = try {
-                            renderComposableToBufferedImage(
-                                content = pageContent,
-                                width = pageWidthPx,
-                                height = pageHeightPx,
-                                density = Density(scale)
-                            )
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            logger.e(e) { "Failed to render page ${index + 1}: ${e.message}" }
-                            return@withContext PdfResult.Error.RenderingFailed(
-                                "Failed to render page ${index + 1}: ${e.message}",
-                                e
-                            )
-                        }
-
-                        // Create PDF page
-                        val page = PDPage(PDRectangle(widthPt, heightPt))
-                        document.addPage(page)
-
-                        val pdImage = LosslessFactory.createFromImage(document, bufferedImage)
-
-                        // Draw the image (PDF coordinates start from bottom-left)
-                        PDPageContentStream(document, page).use { contentStream ->
-                            contentStream.drawImage(
-                                pdImage,
-                                0f,
-                                0f,
-                                widthPt,
-                                heightPt
-                            )
-                        }
-                    }
-
-                    // Save to file
-                    val outputDir = if (config.outputDirectory != null) {
-                        File(config.outputDirectory)
-                    } else {
-                        File(System.getProperty("user.home"), "Documents/pdfs")
-                    }.apply {
-                        mkdirs()
-                    }
-                    val outputFile = File(outputDir, config.fileName)
-                    document.save(outputFile)
-
-                    val fileSize = outputFile.length()
-
-                    logger.logInfo { "PDF generation successful: ${outputFile.absolutePath} (${pageContents.size} pages, $fileSize bytes)" }
-                    PdfResult.Success(
-                        uri = outputFile.absolutePath,
-                        filePath = outputFile.absolutePath,
-                        fileSize = fileSize,
-                        pageCount = pageContents.size
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logger.e(e) { "Failed to generate PDF: ${e.message}" }
-                    PdfResult.Error.IOError("Failed to generate PDF: ${e.message}", e)
-                } finally {
-                    document.close()
-                }
-            }
-        }
+    ): PdfResult = withContext(Dispatchers.Default) {
+        generatePdfWith(DesktopPdfPlatform, config, pages, logger)
     }
+}
 
-    private suspend fun renderComposableToBufferedImage(
+/** Renders with Skia on the UI thread and saves to `outputDirectory` or `~/Documents/pdfs`. */
+private object DesktopPdfPlatform : SkiaPdfPlatform() {
+    override suspend fun measureContentHeightsPx(
+        contents: List<@Composable () -> Unit>,
+        widthPx: Int,
+        contentTimeout: Duration
+    ): List<Int> = withContext(Dispatchers.Main) { super.measureContentHeightsPx(contents, widthPx, contentTimeout) }
+
+    override suspend fun renderPage(
         content: @Composable () -> Unit,
-        width: Int,
-        height: Int,
-        density: Density
-    ): BufferedImage = withContext(Dispatchers.Main) {
-        // Use Compose's ImageComposeScene for rendering
-        val scene = ImageComposeScene(
-            width = width,
-            height = height,
-            density = density,
-            content = content
-        )
+        widthPx: Int,
+        heightPx: Int,
+        contentTimeout: Duration
+    ): RenderedPage = withContext(Dispatchers.Main) { super.renderPage(content, widthPx, heightPx, contentTimeout) }
 
-        try {
-            val image = scene.render()
-            try {
-                skiaImageToBufferedImage(image)
-            } finally {
-                image.close()
+    override suspend fun compress(data: ByteArray): ByteArray = withContext(Dispatchers.Default) { zlibCompress(data) }
+
+    override suspend fun save(pdf: ByteArray, config: PdfConfig, pageCount: Int): PdfResult.Success =
+        withContext(Dispatchers.IO) {
+            val outputDir = if (config.outputDirectory != null) {
+                File(config.outputDirectory)
+            } else {
+                File(System.getProperty("user.home"), "Documents/pdfs")
             }
-        } finally {
-            scene.close()
+            outputDir.mkdirs()
+            val outputFile = File(outputDir, config.fileName)
+            // Write to a temporary file first so an earlier PDF is only replaced by a complete one
+            val tempFile = File(outputDir, "${config.fileName}.partial")
+            try {
+                tempFile.writeBytes(pdf)
+                Files.move(tempFile.toPath(), outputFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                tempFile.delete()
+            }
+            PdfResult.Success(
+                uri = outputFile.absolutePath,
+                filePath = outputFile.absolutePath,
+                fileSize = outputFile.length(),
+                pageCount = pageCount
+            )
         }
-    }
+}
 
-    private fun skiaImageToBufferedImage(image: Image): BufferedImage {
-        // Encode to PNG and decode to BufferedImage (simplest cross-platform approach)
-        val data = image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)
-            ?: throw IllegalStateException("Failed to encode rendered page")
-        return javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(data.bytes))
-            ?: throw IllegalStateException("Failed to decode rendered page")
+private fun zlibCompress(data: ByteArray): ByteArray {
+    val deflater = Deflater()
+    try {
+        deflater.setInput(data)
+        deflater.finish()
+        val out = ByteArrayOutputStream(data.size / 4)
+        val buffer = ByteArray(64 * 1024)
+        while (!deflater.finished()) {
+            out.write(buffer, 0, deflater.deflate(buffer))
+        }
+        return out.toByteArray()
+    } finally {
+        deflater.end()
     }
 }

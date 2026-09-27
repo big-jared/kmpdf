@@ -1,42 +1,43 @@
 package io.github.bigboyapps.kmpdf
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.unit.Density
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.CancellationException
+import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
-import org.jetbrains.skia.Image
-import platform.CoreGraphics.CGContextDrawImage
-import platform.CoreGraphics.CGContextRestoreGState
-import platform.CoreGraphics.CGContextSaveGState
-import platform.CoreGraphics.CGContextScaleCTM
-import platform.CoreGraphics.CGContextTranslateCTM
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSData
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSFileSize
-import platform.Foundation.NSNumber
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
+import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.writeToFile
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
-import platform.UIKit.UIGraphicsBeginPDFContextToFile
-import platform.UIKit.UIGraphicsBeginPDFPageWithInfo
-import platform.UIKit.UIGraphicsEndPDFContext
-import platform.UIKit.UIGraphicsGetCurrentContext
-import platform.UIKit.UIImage
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
 import platform.UIKit.popoverPresentationController
+import platform.posix.memcpy
+import platform.zlib.Z_DEFAULT_COMPRESSION
+import platform.zlib.Z_OK
+import platform.zlib.compress2
+import platform.zlib.compressBound
+import kotlin.time.Duration
 
 private val logger = Logger.withTag("KmPdfGenerator")
 
@@ -72,6 +73,17 @@ actual fun sharePdf(uri: String, title: String) {
     )
 }
 
+@OptIn(ExperimentalForeignApi::class)
+actual suspend fun readPdfBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+    val path = if (uri.startsWith("file:")) NSURL.URLWithString(uri)?.path ?: uri else uri
+    val data = NSData.dataWithContentsOfFile(path) ?: throw IllegalStateException("Couldn't read the PDF at $uri")
+    ByteArray(data.length.toInt()).also { bytes ->
+        if (bytes.isNotEmpty()) {
+            bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+        }
+    }
+}
+
 /**
  * The view controller on top of the key window. Presenting from the root view controller fails
  * silently while it's already presenting something else.
@@ -89,149 +101,67 @@ private fun topViewController(): UIViewController? {
     }
 }
 
-@OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 class IosKmPdfGenerator : KmPdfGenerator {
     override suspend fun generatePdf(
         config: PdfConfig,
         pages: PdfPageScope.() -> Unit
-    ): PdfResult {
-        logger.logDebug { "Starting PDF generation: ${config.fileName}" }
+    ): PdfResult = generatePdfWith(IosPdfPlatform, config, pages, logger)
+}
 
-        // Everything runs on the main thread: Compose rendering requires it, and the UIGraphics
-        // PDF context belongs to the thread that created it
-        return withContext(Dispatchers.Main) {
-            try {
-                // Build pages
-                val pageScope = PdfPageScope()
-                pageScope.pages()
-                val pageContents = pageScope.pages
+/** Renders with Skia on the main thread, compresses with zlib, and saves to `Documents/pdfs`. */
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+private object IosPdfPlatform : SkiaPdfPlatform() {
+    override suspend fun measureContentHeightsPx(
+        contents: List<@Composable () -> Unit>,
+        widthPx: Int,
+        contentTimeout: Duration
+    ): List<Int> = withContext(Dispatchers.Main) { super.measureContentHeightsPx(contents, widthPx, contentTimeout) }
 
-                if (pageContents.isEmpty()) {
-                    return@withContext PdfResult.Error.Unknown("No pages defined")
-                }
-
-                // Page dimensions in points
-                val widthPt = config.pageSize.width.value.toDouble()
-                val heightPt = config.pageSize.height.value.toDouble()
-
-                // Use 2x scale for rendering quality
-                val scale = 2.0
-                val widthPx = (widthPt * scale).toInt()
-                val heightPx = (heightPt * scale).toInt()
-
-                logger.logDebug { "Rendering ${pageContents.size} pages at ${widthPt}x${heightPt}pt" }
-
-                val outputPath = outputPath(config.fileName)
-                // Pages go to a temporary file that replaces the output only once every page succeeds,
-                // so a failed render doesn't leave a partial PDF or overwrite an earlier one
-                val tempPath = "$outputPath.partial"
-                val fileManager = NSFileManager.defaultManager
-                val bounds = CGRectMake(0.0, 0.0, widthPt, heightPt)
-
-                if (!UIGraphicsBeginPDFContextToFile(tempPath, bounds, null)) {
-                    return@withContext PdfResult.Error.IOError("Failed to create PDF file at $tempPath")
-                }
-
-                var allPagesWritten = false
-                try {
-                    // Render and write one page at a time so only one page image is in memory
-                    pageContents.forEachIndexed { index, pageContent ->
-                        logger.logDebug { "Rendering page ${index + 1} of ${pageContents.size}" }
-
-                        val uiImage = try {
-                            renderPage(pageContent, widthPx, heightPx, scale)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            logger.e(e) { "Failed to render page ${index + 1}: ${e.message}" }
-                            return@withContext PdfResult.Error.RenderingFailed(
-                                "Failed to render page ${index + 1}: ${e.message}",
-                                e
-                            )
-                        }
-
-                        UIGraphicsBeginPDFPageWithInfo(bounds, null)
-
-                        val context = UIGraphicsGetCurrentContext()
-                            ?: throw IllegalStateException("Failed to get graphics context")
-
-                        // Save graphics state
-                        CGContextSaveGState(context)
-
-                        uiImage.CGImage?.let { img ->
-                            // Flip coordinate system for image drawing
-                            // PDF origin is at bottom-left, images render top-to-bottom
-                            CGContextTranslateCTM(context, 0.0, heightPt)
-                            CGContextScaleCTM(context, 1.0, -1.0)
-
-                            // Draw the full page image
-                            val drawRect = CGRectMake(0.0, 0.0, widthPt, heightPt)
-                            CGContextDrawImage(context, drawRect, img)
-                        }
-
-                        // Restore graphics state
-                        CGContextRestoreGState(context)
-                    }
-                    allPagesWritten = true
-                } finally {
-                    UIGraphicsEndPDFContext()
-                    if (!allPagesWritten) {
-                        fileManager.removeItemAtPath(tempPath, error = null)
-                    }
-                }
-
-                fileManager.removeItemAtPath(outputPath, error = null)
-                if (!fileManager.moveItemAtPath(tempPath, toPath = outputPath, error = null)) {
-                    fileManager.removeItemAtPath(tempPath, error = null)
-                    return@withContext PdfResult.Error.IOError("Failed to move PDF into place at $outputPath")
-                }
-
-                // Get file size
-                val fileAttributes = fileManager.attributesOfItemAtPath(outputPath, error = null)
-                val fileSize = (fileAttributes?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
-
-                logger.logInfo { "PDF generation successful: $outputPath (${pageContents.size} pages, $fileSize bytes)" }
-                PdfResult.Success(
-                    uri = outputPath,
-                    filePath = outputPath,
-                    fileSize = fileSize,
-                    pageCount = pageContents.size
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e(e) { "Failed to generate PDF: ${e.message}" }
-                PdfResult.Error.Unknown("Failed to generate PDF: ${e.message}", e)
-            }
-        }
-    }
-
-    private fun renderPage(
+    override suspend fun renderPage(
         content: @Composable () -> Unit,
         widthPx: Int,
         heightPx: Int,
-        scale: Double
-    ): UIImage {
-        val scene = ImageComposeScene(
-            width = widthPx,
-            height = heightPx,
-            density = Density(scale.toFloat()),
-            content = content
-        )
-        try {
-            val image = scene.render()
-            try {
-                return image.toUIImage()
-            } finally {
-                image.close()
+        contentTimeout: Duration
+    ): RenderedPage = withContext(Dispatchers.Main) { super.renderPage(content, widthPx, heightPx, contentTimeout) }
+
+    override suspend fun compress(data: ByteArray): ByteArray = withContext(Dispatchers.Default) {
+        memScoped {
+            val bound = compressBound(data.size.convert())
+            val output = ByteArray(bound.toInt())
+            val outputSize = alloc<ULongVar>().apply { value = bound }
+            val status = data.usePinned { input ->
+                output.usePinned { out ->
+                    compress2(
+                        out.addressOf(0).reinterpret(),
+                        outputSize.ptr,
+                        input.addressOf(0).reinterpret(),
+                        data.size.convert(),
+                        Z_DEFAULT_COMPRESSION
+                    )
+                }
             }
-        } finally {
-            scene.close()
+            check(status == Z_OK) { "zlib compression failed with status $status" }
+            output.copyOf(outputSize.value.toInt())
         }
     }
 
+    override suspend fun save(pdf: ByteArray, config: PdfConfig, pageCount: Int): PdfResult.Success =
+        withContext(Dispatchers.IO) {
+            val outputPath = outputPath(config.fileName)
+            val data = pdf.usePinned { pinned ->
+                NSData.create(bytes = pinned.addressOf(0), length = pdf.size.convert())
+            }
+            // Atomic writes go through a temporary file, so an earlier PDF is only replaced by a complete one
+            check(data.writeToFile(outputPath, atomically = true)) { "Failed to write the PDF to $outputPath" }
+            PdfResult.Success(
+                uri = outputPath,
+                filePath = outputPath,
+                fileSize = pdf.size.toLong(),
+                pageCount = pageCount
+            )
+        }
+
     private fun outputPath(fileName: String): String {
-        // Get documents directory
         val documentsPath = NSSearchPathForDirectoriesInDomains(
             NSDocumentDirectory,
             NSUserDomainMask,
@@ -240,8 +170,6 @@ class IosKmPdfGenerator : KmPdfGenerator {
 
         val pdfDir = "$documentsPath/pdfs"
         val fileManager = NSFileManager.defaultManager
-
-        // Create directory if needed
         if (!fileManager.fileExistsAtPath(pdfDir)) {
             fileManager.createDirectoryAtPath(
                 pdfDir,
@@ -250,16 +178,6 @@ class IosKmPdfGenerator : KmPdfGenerator {
                 error = null
             )
         }
-
         return "$pdfDir/$fileName"
     }
-}
-
-@OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
-private fun Image.toUIImage(): UIImage {
-    val bytes = this.encodeToData()?.bytes ?: throw IllegalStateException("Failed to encode image")
-    val nsData = bytes.usePinned { pinned ->
-        NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-    }
-    return UIImage.imageWithData(nsData) ?: throw IllegalStateException("Failed to create UIImage")
 }
