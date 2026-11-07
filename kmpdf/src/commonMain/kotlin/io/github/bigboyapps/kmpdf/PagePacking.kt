@@ -21,6 +21,20 @@ internal sealed class PagePacking {
  */
 internal fun packIntoPages(itemHeights: List<Float>, availableHeight: Float, spacing: Float = 0f): PagePacking {
     require(availableHeight > 0f) { "Available page height must be positive, was $availableHeight" }
+    return packIntoPages(itemHeights, { availableHeight }, spacing)
+}
+
+/**
+ * Splits items into pages in order, never splitting an item across pages, where each page can have a
+ * different height available for items.
+ *
+ * @param availableHeight The height available for items on the page at a zero-based index.
+ */
+internal fun packIntoPages(
+    itemHeights: List<Float>,
+    availableHeight: (pageIndex: Int) -> Float,
+    spacing: Float = 0f
+): PagePacking {
     require(spacing >= 0f) { "Item spacing can't be negative, was $spacing" }
 
     val pages = mutableListOf<IntRange>()
@@ -29,19 +43,20 @@ internal fun packIntoPages(itemHeights: List<Float>, availableHeight: Float, spa
 
     itemHeights.forEachIndexed { index, height ->
         require(height >= 0f) { "Item $index has a negative height ($height)" }
-        if (height > availableHeight + FIT_EPSILON) {
-            return PagePacking.ItemTooTall(index, height, availableHeight)
-        }
-
-        val isFirstOnPage = index == pageStart
-        val heightWithSpacing = if (isFirstOnPage) height else usedHeight + spacing + height
-        if (heightWithSpacing <= availableHeight + FIT_EPSILON) {
-            usedHeight = heightWithSpacing
-        } else {
+        if (index != pageStart) {
+            val heightWithSpacing = usedHeight + spacing + height
+            if (heightWithSpacing <= availableHeight(pages.size) + FIT_EPSILON) {
+                usedHeight = heightWithSpacing
+                return@forEachIndexed
+            }
             pages += pageStart until index
             pageStart = index
-            usedHeight = height
         }
+        val available = availableHeight(pages.size)
+        if (height > available + FIT_EPSILON) {
+            return PagePacking.ItemTooTall(index, height, available)
+        }
+        usedHeight = height
     }
 
     if (pageStart < itemHeights.size) {

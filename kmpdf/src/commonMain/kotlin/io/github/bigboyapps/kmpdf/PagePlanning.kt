@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** The largest page a PDF can have: 200 inches (14,400 points) in either dimension. */
 internal const val MAX_PDF_PAGE_SIZE_PT = 14_400f
@@ -48,6 +49,17 @@ private class PageDraft(
     val content: (PdfPageInfo) -> @Composable () -> Unit
 )
 
+/** Pages planned from one [PageSpec]. */
+private sealed interface PlannedPart {
+    val pageCount: Int
+    fun drafts(): List<PageDraft>
+}
+
+private class FixedPage(private val draft: PageDraft) : PlannedPart {
+    override val pageCount = 1
+    override fun drafts() = listOf(draft)
+}
+
 /**
  * Resolves every requested page to its final size, splits flowing items into pages, and numbers the pages.
  *
@@ -59,17 +71,46 @@ internal suspend fun planPages(
     specs: List<PageSpec>,
     measureContentHeightsPx: ContentHeightMeasurer
 ): List<PlannedPage> {
-    val drafts = mutableListOf<PageDraft>()
+    val parts = mutableListOf<PlannedPart>()
     for (spec in specs) {
-        when (spec) {
-            is PageSpec.Single -> drafts += planSingle(config, spec, pageNumber = drafts.size + 1, measureContentHeightsPx)
-            is PageSpec.Flow -> drafts += planFlow(config, spec, measureContentHeightsPx)
+        parts += when (spec) {
+            is PageSpec.Single -> {
+                val pageNumber = parts.sumOf { it.pageCount } + 1
+                FixedPage(planSingle(config, spec, pageNumber, measureContentHeightsPx))
+            }
+            is PageSpec.Flow -> planFlow(config, spec, measureContentHeightsPx) ?: continue
         }
     }
+    reserveRoomForDecorations(parts, measureContentHeightsPx)
+
+    val drafts = parts.flatMap { it.drafts() }
     return drafts.mapIndexed { index, draft ->
         val info = PdfPageInfo(pageNumber = index + 1, pageCount = drafts.size)
         PlannedPage(draft.widthPt, draft.heightPt, info, draft.content(info))
     }
+}
+
+/**
+ * Headers and footers can change with the page, like a "Continued" line from page 2 on or a page count that
+ * wraps, so each page of flowing items reserves room for its own header and footer. Which page an item lands on
+ * depends on that room, and the room on the page numbers, so this repeats until no flow's page count changes.
+ * Every page's header and footer were then measured with the page number and count it's rendered with.
+ */
+private suspend fun reserveRoomForDecorations(parts: List<PlannedPart>, measureContentHeightsPx: ContentHeightMeasurer) {
+    if (parts.none { it is FlowPlan && it.hasDecorations }) return
+    do {
+        val pageCount = parts.sumOf { it.pageCount }
+        var firstPageNumber = 1
+        var changed = false
+        for (part in parts) {
+            val partPageCount = part.pageCount
+            if (part is FlowPlan && part.hasDecorations) {
+                val infos = List(partPageCount) { PdfPageInfo(pageNumber = firstPageNumber + it, pageCount = pageCount) }
+                if (part.reserveRoomFor(infos, measureContentHeightsPx)) changed = true
+            }
+            firstPageNumber += partPageCount
+        }
+    } while (changed)
 }
 
 private suspend fun planSingle(
@@ -99,9 +140,11 @@ private suspend fun planSingle(
     val sampleInfo = PdfPageInfo(pageNumber = 1, pageCount = 1)
     val contentHeightPx = measureContentHeightsPx(
         listOf { CompositionLocalProvider(LocalPdfPageInfo provides sampleInfo) { spec.content() } },
-        (contentWidthPt * PAGE_RENDER_SCALE).toInt().coerceAtLeast(1)
+        contentWidthPx(widthPt, margins)
     ).single()
-    val heightPt = max(1f, ceil(contentHeightPx / PAGE_RENDER_SCALE + margins.top.value + margins.bottom.value))
+    // Margins are rounded to whole pixels when laid out, so size the page from the rounded margins
+    val pageHeightPx = contentHeightPx + marginPx(margins.top) + marginPx(margins.bottom)
+    val heightPt = max(1f, ceil(pageHeightPx / PAGE_RENDER_SCALE))
     if (heightPt > MAX_PDF_PAGE_SIZE_PT) {
         throw PdfPageTooTallException("Page $pageNumber content is $heightPt pt tall, over the $MAX_PAGE_PT pt PDF page limit")
     }
@@ -112,8 +155,8 @@ private suspend fun planFlow(
     config: PdfConfig,
     spec: PageSpec.Flow,
     measureContentHeightsPx: ContentHeightMeasurer
-): List<PageDraft> {
-    if (spec.items.isEmpty()) return emptyList()
+): FlowPlan? {
+    if (spec.items.isEmpty()) return null
 
     val size = config.pageSize
     val margins = config.margins
@@ -123,50 +166,123 @@ private suspend fun planFlow(
     }
     val heightPt = validatedHeight(size, "pages(...)")
     margins.contentAreaError(widthPt, heightPt)?.let { throw PdfConfigException("pages(...): $it") }
-    val contentWidthPt = widthPt - margins.left.value - margins.right.value
-    val contentHeightPt = heightPt - margins.top.value - margins.bottom.value
 
-    // Measure the header, footer, and every item in one pass
+    // Measure every item, and the header and footer of a first page, in one pass
     val sampleInfo = PdfPageInfo(pageNumber = 1, pageCount = 1)
-    val header = spec.header
-    val footer = spec.footer
-    val decorations = listOfNotNull(
-        header?.let { h -> @Composable { CompositionLocalProvider(LocalPdfPageInfo provides sampleInfo) { h(sampleInfo) } } },
-        footer?.let { f -> @Composable { CompositionLocalProvider(LocalPdfPageInfo provides sampleInfo) { f(sampleInfo) } } }
-    )
-    val heightsPx = measureContentHeightsPx(
-        decorations + spec.items,
-        (contentWidthPt * PAGE_RENDER_SCALE).toInt().coerceAtLeast(1)
-    )
-    var next = 0
-    val headerHeightPt = if (header != null) heightsPx[next++] / PAGE_RENDER_SCALE else 0f
-    val footerHeightPt = if (footer != null) heightsPx[next++] / PAGE_RENDER_SCALE else 0f
-    val itemHeightsPt = heightsPx.drop(next).map { it / PAGE_RENDER_SCALE }
+    val decorations = decorationsFor(spec, sampleInfo)
+    val contentWidthPx = contentWidthPx(widthPt, margins)
+    val heightsPx = measureContentHeightsPx(decorations + spec.items, contentWidthPx)
 
-    val availablePt = contentHeightPt - headerHeightPt - footerHeightPt
-    if (availablePt <= 0f) {
-        throw PdfConfigException(
-            "pages(...): the header ($headerHeightPt pt) and footer ($footerHeightPt pt) leave no room for items " +
-                "in $contentHeightPt pt of page content"
-        )
+    return FlowPlan(
+        spec = spec,
+        widthPt = widthPt,
+        heightPt = heightPt,
+        margins = margins,
+        contentWidthPx = contentWidthPx,
+        itemHeightsPx = heightsPx.drop(decorations.size),
+        firstPageDecorationsPx = heightsPx.take(decorations.size).sum()
+    )
+}
+
+/** The header and footer of a page of [spec] with [info], in the order they're measured. */
+private fun decorationsFor(spec: PageSpec.Flow, info: PdfPageInfo): List<@Composable () -> Unit> = listOfNotNull(
+    spec.header?.let { header -> @Composable { CompositionLocalProvider(LocalPdfPageInfo provides info) { header(info) } } },
+    spec.footer?.let { footer -> @Composable { CompositionLocalProvider(LocalPdfPageInfo provides info) { footer(info) } } }
+)
+
+/**
+ * Items of a [PageSpec.Flow] split into pages. Heights are in the pixels pages are rendered at, so page breaks
+ * match the rendered layout exactly.
+ */
+private class FlowPlan(
+    private val spec: PageSpec.Flow,
+    private val widthPt: Float,
+    private val heightPt: Float,
+    private val margins: PdfMargins,
+    private val contentWidthPx: Int,
+    private val itemHeightsPx: List<Int>,
+    firstPageDecorationsPx: Int
+) : PlannedPart {
+    private val contentHeightPx = contentHeightPx(heightPt, margins)
+
+    // Arrangement.spacedBy rounds the spacing to whole pixels, so plan with the rounded spacing
+    private val spacingPx = (spec.itemSpacing.value * PAGE_RENDER_SCALE).roundToInt()
+
+    /**
+     * Room for the header and footer on each measured page, by page index, and on pages not measured yet.
+     * The largest measurement so far is kept, so page counts settle instead of going back and forth.
+     */
+    private val reservedPx = mutableListOf<Int>()
+    private var unmeasuredReservedPx = firstPageDecorationsPx
+
+    private var pageRanges = pack()
+
+    val hasDecorations: Boolean get() = spec.header != null || spec.footer != null
+
+    override val pageCount: Int get() = pageRanges.size
+
+    /** Measures the header and footer of pages with [infos], reserves room for them, and returns whether the page count changed. */
+    suspend fun reserveRoomFor(infos: List<PdfPageInfo>, measureContentHeightsPx: ContentHeightMeasurer): Boolean {
+        val decorationsPerPage = listOfNotNull(spec.header, spec.footer).size
+        val heightsPx = measureContentHeightsPx(infos.flatMap { decorationsFor(spec, it) }, contentWidthPx)
+        heightsPx.chunked(decorationsPerPage).forEachIndexed { index, pageHeightsPx ->
+            val px = pageHeightsPx.sum()
+            if (index < reservedPx.size) reservedPx[index] = max(reservedPx[index], px) else reservedPx += px
+            unmeasuredReservedPx = max(unmeasuredReservedPx, px)
+        }
+        val before = pageCount
+        pageRanges = pack()
+        return pageCount != before
     }
 
-    val packing = packIntoPages(itemHeightsPt, availablePt, spec.itemSpacing.value)
-    val pageRanges = when (packing) {
-        is PagePacking.Packed -> packing.pages
-        is PagePacking.ItemTooTall -> throw PdfPageTooTallException(
-            "Item ${packing.index + 1} in pages(...) is ${packing.itemHeight} pt tall, but only " +
-                "${packing.availableHeight} pt fits on a page"
-        )
-    }
-
-    return pageRanges.map { range ->
+    override fun drafts(): List<PageDraft> = pageRanges.map { range ->
         val pageItems = spec.items.slice(range)
         PageDraft(widthPt, heightPt) { info ->
-            pageContent(info, margins) { FlowPage(header, footer, pageItems, spec.itemSpacing, info) }
+            pageContent(info, margins) { FlowPage(spec.header, spec.footer, pageItems, spec.itemSpacing, info) }
         }
     }
+
+    private fun pack(): List<IntRange> {
+        val packing = packIntoPages(
+            itemHeights = itemHeightsPx.map { it.toFloat() },
+            availableHeight = { pageIndex -> availablePx(pageIndex).toFloat() },
+            spacing = spacingPx.toFloat()
+        )
+        return when (packing) {
+            is PagePacking.Packed -> packing.pages
+            is PagePacking.ItemTooTall -> throw PdfPageTooTallException(
+                "Item ${packing.index + 1} in pages(...) is ${packing.itemHeight / PAGE_RENDER_SCALE} pt tall, but only " +
+                    "${packing.availableHeight / PAGE_RENDER_SCALE} pt fits on a page"
+            )
+        }
+    }
+
+    private fun availablePx(pageIndex: Int): Int {
+        val reserved = reservedPx.getOrNull(pageIndex) ?: unmeasuredReservedPx
+        val available = contentHeightPx - reserved
+        if (available <= 0) {
+            throw PdfConfigException(
+                "pages(...): the header and footer (${reserved / PAGE_RENDER_SCALE} pt) on page ${pageIndex + 1} " +
+                    "leave no room for items in ${contentHeightPx / PAGE_RENDER_SCALE} pt of page content"
+            )
+        }
+        return available
+    }
 }
+
+/** The size of a page dimension in rendered pixels. */
+internal fun pagePx(pt: Float): Int = (pt * PAGE_RENDER_SCALE).toInt()
+
+/** A margin in rendered pixels, rounded the way padding rounds it. */
+private fun marginPx(margin: Dp): Int = (margin.value * PAGE_RENDER_SCALE).roundToInt()
+
+/** The width page content is laid out at: the page in whole pixels, less the margins as padding rounds them. */
+private fun contentWidthPx(widthPt: Float, margins: PdfMargins): Int =
+    (pagePx(widthPt) - marginPx(margins.left) - marginPx(margins.right)).coerceAtLeast(1)
+
+/** The height page content is laid out in: the page in whole pixels, less the margins as padding rounds them. */
+private fun contentHeightPx(heightPt: Float, margins: PdfMargins): Int =
+    pagePx(heightPt) - marginPx(margins.top) - marginPx(margins.bottom)
 
 private fun validatedWidth(size: PageSize, what: String): Float {
     val widthPt = size.width.value

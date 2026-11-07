@@ -14,12 +14,17 @@ class PagePlanningTest {
     private val letter = PdfConfig(pageSize = PageSize.Letter, margins = PdfMargins.all(36.dp))
     private val nothing: @Composable () -> Unit = { Box {} }
 
-    /** A measurer that returns each call's heights, in points, from [calls] in order. */
-    private fun fakeMeasurer(vararg calls: List<Float>): Pair<ContentHeightMeasurer, List<Int>> {
-        val remaining = calls.toMutableList()
+    /**
+     * A measurer that returns the first call's heights, in points, from [first], and the heights of headers and
+     * footers measured afterwards from [decoration], given each one's position in its call.
+     */
+    private fun fakeMeasurer(
+        first: List<Float> = emptyList(),
+        decoration: (index: Int) -> Float = { 0f }
+    ): Pair<ContentHeightMeasurer, List<Int>> {
         val requestedCounts = mutableListOf<Int>()
         val measurer: ContentHeightMeasurer = { contents, _ ->
-            val heights = remaining.removeAt(0)
+            val heights = if (requestedCounts.isEmpty()) first else List(contents.size, decoration)
             check(contents.size == heights.size) { "Measured ${contents.size} contents, expected ${heights.size}" }
             requestedCounts += contents.size
             heights.map { (it * PAGE_RENDER_SCALE).toInt() }
@@ -37,10 +42,11 @@ class PagePlanningTest {
     @Test
     fun headerAndFooterReduceTheSpaceForItems() = runTest {
         // Letter with 36 pt margins leaves 720 pt; a 100 pt header and 20 pt footer leave 600 pt for items
-        val (measurer, requested) = fakeMeasurer(listOf(100f, 20f) + List(7) { 200f })
+        val (measurer, requested) = fakeMeasurer(listOf(100f, 20f) + List(7) { 200f }) { if (it % 2 == 0) 100f else 20f }
         val pages = planPages(letter, listOf(flow(7, header = true, footer = true)), measurer)
 
-        assertEquals(listOf(9), requested, "Header, footer, and items should be measured in one pass")
+        assertEquals(9, requested.first(), "Header, footer, and items should be measured in one pass")
+        assertEquals(listOf(9, 6), requested, "Then each page's header and footer should be measured once")
         assertEquals(3, pages.size, "Three 200 pt items fit in 600 pt, so 7 items need 3 pages")
         pages.forEach { page ->
             assertEquals(612f, page.widthPt)
@@ -107,5 +113,34 @@ class PagePlanningTest {
 
         // 100.5 pt of content + 72 pt of margins = 172.5, rounded up
         assertEquals(173f, page.heightPt)
+    }
+
+    @Test
+    fun headerThatGrowsAfterTheFirstPageGetsItsOwnRoom() = runTest {
+        // A 50 pt header on page 1 and a 150 pt one after it leave 670 pt, then 570 pt, for 100 pt items.
+        // Planning every page with page 1's header would put 6 items on each of 2 pages.
+        val (measurer, _) = fakeMeasurer(listOf(50f) + List(12) { 100f }) { if (it == 0) 50f else 150f }
+        val pages = planPages(letter, listOf(flow(12, header = true)), measurer)
+
+        assertEquals((1..3).map { PdfPageInfo(it, 3) }, pages.map { it.info }, "6, 5, and 1 items")
+    }
+
+    @Test
+    fun spacingIsPlannedAsWholePixels() = runTest {
+        // 5 × 140.5 pt + 4 × 4.3 pt = 719.7 pt fits in 720 pt, but the spacing is drawn as 4.5 pt, which doesn't
+        val (measurer, _) = fakeMeasurer(List(5) { 140.5f })
+        val pages = planPages(letter, listOf(flow(5, spacing = 4.3f)), measurer)
+
+        assertEquals(2, pages.size)
+    }
+
+    @Test
+    fun wrapHeightPageFitsContentAfterMarginsAreRounded() = runTest {
+        // 0.25 pt margins are laid out as 1 px each, so 101 px of content needs a 103 px (51.5 pt) page
+        val config = PdfConfig(margins = PdfMargins(top = 0.25.dp, bottom = 0.25.dp))
+        val (measurer, _) = fakeMeasurer(listOf(50.5f))
+        val page = planPages(config, listOf(PageSpec.Single(PageSize.wrapHeight(300.dp), nothing)), measurer).single()
+
+        assertEquals(52f, page.heightPt)
     }
 }

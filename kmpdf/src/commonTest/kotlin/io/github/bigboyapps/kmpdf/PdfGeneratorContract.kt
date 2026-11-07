@@ -557,6 +557,35 @@ abstract class PdfGeneratorContract {
     }
 
     @Test
+    fun headerThatChangesByPageGetsRoomOnEveryPage() = runPdfTest {
+        // A 30 pt header on page 1 and a 130 pt one after it leave 690 pt, then 590 pt, for 100 pt items
+        val headerHeight = { info: PdfPageInfo -> if (info.pageNumber == 1) 30 else 130 }
+        val result = createGenerator().generatePdf(
+            config("contract-changing-header.pdf", PageSize.Letter).copy(margins = PdfMargins.Narrow)
+        ) {
+            pages(
+                items = (0 until 12).toList(),
+                header = { info -> Box(Modifier.fillMaxWidth().height(headerHeight(info).dp).background(Color.Black)) }
+            ) { index ->
+                Box(Modifier.fillMaxWidth().height(100.dp).background(itemColor(index)))
+            }
+        }
+        assertIs<PdfResult.Success>(result, "Expected paginated items to generate, got $result")
+
+        val expectedPages = listOf(0..5, 6..10, 11..11)
+        val document = readBack(result)
+        assertEquals(expectedPages.size, document.pages.size, "6 items fit on page 1, then 5 per page")
+        document.pages.forEachIndexed { pageIndex, page ->
+            val range = expectedPages[pageIndex]
+            val itemsTop = (36 + headerHeight(PdfPageInfo(pageIndex + 1, expectedPages.size))) * RENDER_SCALE
+            val midX = page.width / 2
+            val itemsBottom = itemsTop + range.count() * 100 * RENDER_SCALE
+            assertEquals(range.first, decodeItemIndex(page.pixel(midX, itemsTop + EDGE_OFFSET_PX)), "First item on page ${pageIndex + 1}")
+            assertEquals(range.last, decodeItemIndex(page.pixel(midX, itemsBottom - EDGE_OFFSET_PX)), "Last item on page ${pageIndex + 1}")
+        }
+    }
+
+    @Test
     fun pageInfoIsProvidedToEveryPage() = runPdfTest {
         val pageContent: @Composable () -> Unit = {
             val info = LocalPdfPageInfo.current

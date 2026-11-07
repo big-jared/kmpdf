@@ -79,4 +79,11 @@ class PagePackingTest {
         assertFailsWith<IllegalArgumentException> { packIntoPages(listOf(10f), availableHeight = 100f, spacing = -1f) }
         assertFailsWith<IllegalArgumentException> { packIntoPages(listOf(-1f), availableHeight = 100f) }
     }
+
+    @Test
+    fun eachPageCanHaveItsOwnAvailableHeight() {
+        val result = packIntoPages(List(5) { 40f }, availableHeight = { page -> if (page == 0) 120f else 80f })
+
+        assertEquals(PagePacking.Packed(listOf(0..2, 3..4)), result)
+    }
 }

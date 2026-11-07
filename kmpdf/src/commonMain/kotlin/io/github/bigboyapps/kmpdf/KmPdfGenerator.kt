@@ -137,6 +137,9 @@ class PdfPageScope internal constructor() {
      * placed from the top of each page until the next one doesn't fit. Pages use [PdfConfig.pageSize],
      * which must have a fixed height. Items shouldn't fill the page height, since they're laid out in a column.
      *
+     * The header and footer are measured for every page with that page's [PdfPageInfo], so they can change
+     * from page to page, like a "Continued" line from page 2 on.
+     *
      * An item taller than the space available on a page makes generation return
      * [PdfResult.Error.RenderingFailed].
      *

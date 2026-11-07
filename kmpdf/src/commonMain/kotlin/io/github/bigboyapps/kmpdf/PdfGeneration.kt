@@ -80,8 +80,8 @@ internal suspend fun generatePdfWith(
         val rendered = try {
             platform.renderPage(
                 plannedPage.content,
-                (plannedPage.widthPt * PAGE_RENDER_SCALE).toInt(),
-                (plannedPage.heightPt * PAGE_RENDER_SCALE).toInt(),
+                pagePx(plannedPage.widthPt),
+                pagePx(plannedPage.heightPt),
                 config.contentTimeout
             )
         } catch (e: CancellationException) {

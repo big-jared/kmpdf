@@ -42,20 +42,27 @@ class DesktopKmPdfGenerator : KmPdfGenerator {
     }
 }
 
-/** Renders with Skia on the UI thread and saves to `outputDirectory` or `~/Documents/pdfs`. */
+/**
+ * Renders with Skia off the UI thread and saves to `outputDirectory` or `~/Documents/pdfs`.
+ *
+ * Pages render one at a time on a background thread, so generating a PDF doesn't block the app's window, and
+ * callers on the Swing event thread (even ones that block on generation) can't deadlock it.
+ */
 private object DesktopPdfPlatform : SkiaPdfPlatform() {
+    private val renderDispatcher = Dispatchers.Default.limitedParallelism(1)
+
     override suspend fun measureContentHeightsPx(
         contents: List<@Composable () -> Unit>,
         widthPx: Int,
         contentTimeout: Duration
-    ): List<Int> = withContext(Dispatchers.Main) { super.measureContentHeightsPx(contents, widthPx, contentTimeout) }
+    ): List<Int> = withContext(renderDispatcher) { super.measureContentHeightsPx(contents, widthPx, contentTimeout) }
 
     override suspend fun renderPage(
         content: @Composable () -> Unit,
         widthPx: Int,
         heightPx: Int,
         contentTimeout: Duration
-    ): RenderedPage = withContext(Dispatchers.Main) { super.renderPage(content, widthPx, heightPx, contentTimeout) }
+    ): RenderedPage = withContext(renderDispatcher) { super.renderPage(content, widthPx, heightPx, contentTimeout) }
 
     override suspend fun compress(data: ByteArray): ByteArray = withContext(Dispatchers.Default) { zlibCompress(data) }
 
