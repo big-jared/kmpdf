@@ -47,6 +47,13 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
         }
+
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
+            // An independent PDF implementation, to check what the samples generate
+            implementation(libs.pdfbox)
+        }
     }
 }
 
