@@ -197,10 +197,10 @@ gh run view --log
 **Solution**:
 ```bash
 # Generate docs locally
-./gradlew dokkaHtml
+./gradlew :kmpdf:dokkaGenerate
 
 # View generated docs
-open build/dokka/html/index.html
+open kmpdf/build/dokka/html/index.html
 
 # Fix KDoc errors and re-run
 ```
@@ -217,7 +217,7 @@ Before creating a PR, run:
 ./gradlew detekt        # Code quality
 ./gradlew apiCheck      # API compatibility
 ./gradlew test          # Tests
-./gradlew dokkaHtml     # Documentation
+./gradlew :kmpdf:dokkaGenerate  # Documentation
 ./gradlew build         # Full build
 ```
 

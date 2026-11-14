@@ -38,7 +38,7 @@ jobs:
         xcode-version: latest-stable
 
     - name: Generate Dokka documentation
-      run: ./gradlew dokkaHtml
+      run: ./gradlew :kmpdf:dokkaGenerate
 
     - name: Setup Pages
       uses: actions/configure-pages@v4

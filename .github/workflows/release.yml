@@ -104,7 +104,7 @@ jobs:
     - name: Generate documentation
       run: |
         echo "Generating Dokka documentation..."
-        ./gradlew dokkaHtml
+        ./gradlew :kmpdf:dokkaGenerate
 
     - name: Update version in build.gradle.kts and README
       run: |
