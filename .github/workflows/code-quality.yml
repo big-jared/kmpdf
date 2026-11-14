@@ -92,10 +92,10 @@ jobs:
       run: chmod +x gradlew
 
     - name: Generate documentation
-      run: ./gradlew dokkaHtml --no-configuration-cache
+      run: ./gradlew :kmpdf:dokkaGenerate --no-configuration-cache
 
     - name: Upload documentation
       uses: actions/upload-artifact@v4
       with:
         name: api-docs
-        path: build/dokka/html/
+        path: kmpdf/build/dokka/html/
