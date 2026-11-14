@@ -27,7 +27,7 @@ Generate PDF documents from Compose UI on Android, iOS, Desktop, and Web.
 ```kotlin
 commonMain {
     dependencies {
-        implementation("io.github.big-jared:kmpdf:1.2.0")
+        implementation("io.github.big-jared:kmpdf:1.3.0")
     }
 }
 ```

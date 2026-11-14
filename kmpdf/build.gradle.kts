@@ -11,7 +11,7 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.28.0"
 }
 
-val libraryVersion = "1.2.0"
+val libraryVersion = "1.3.0"
 
 // Generates KMPDF_VERSION from libraryVersion, so the version written into PDFs matches each release
 val generateVersionSource by tasks.registering {
